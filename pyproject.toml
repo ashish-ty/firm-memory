@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "firm-mem0"
+version = "0.1.0"
+description = "Firm-wide memory namespace contract and client factory over self-hosted mem0 OSS"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mem0ai>=2.0.14",
+]
+
+[project.optional-dependencies]
+# Self-hosted store. pgvector is the default backend in build_memory_config().
+pgvector = ["psycopg[binary,pool]>=3.1"]
+# Local cross-encoder reranking — keeps retrieval quality without leaving the network.
+rerank = ["sentence-transformers>=2.2.0"]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "ruff>=0.6",
+    "psycopg[binary,pool]>=3.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/firm_mem0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+# Docs keep hand-wrapped examples; ruff would flatten them into long single lines.
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "SIM", "RUF"]
+
+[tool.coverage.run]
+source = ["firm_mem0"]
