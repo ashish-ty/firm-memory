@@ -1,19 +1,24 @@
-"""Settings and mem0 backend configuration.
+"""mem0 backend configuration.
 
-This is the single choke point every application imports. Changing the vector
-store, embedding model, reranker, or taxonomy happens here once instead of in
-each app.
+The single choke point for the firm's self-hosted mem0 deployment: vector store,
+embedding model, reranker, and the taxonomy-derived extraction instructions.
+Changing any of them happens here once instead of in each application.
+
+The deployment is deliberately self-hosted with no egress. Business rules like
+"MCX orders always route through Risk Engine A" are closer to strategy IP than
+to ordinary code comments, and the pool inherits the union of access control
+across every repo feeding it — so the embedding model choice is the thing most
+likely to quietly break that property.
 """
 
 from __future__ import annotations
 
-import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from .errors import ConfigurationError
+from ...errors import ConfigurationError
+from ...taxonomy import fact_extraction_instructions
 from .namespace import DEFAULT_FIRM_OWNER
-from .taxonomy import fact_extraction_instructions
 
 DEFAULT_COLLECTION = "mem0_firm"
 DEFAULT_EMBEDDING_DIMS = 1536
@@ -24,14 +29,12 @@ DEFAULT_EMBEDDER_MODEL = "text-embedding-3-small"
 # Cross-encoder runs locally, so reranking adds no external dependency.
 DEFAULT_RERANKER_PROVIDER = "sentence_transformer"
 DEFAULT_RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-DEFAULT_TOP_K = 5
-DEFAULT_THRESHOLD = 0.3
 
 _FALSEY = frozenset({"0", "off", "false", "no"})
 
 
 @dataclass(frozen=True, slots=True)
-class Settings:
+class Mem0Settings:
     """Validated configuration for the firm's self-hosted mem0 deployment."""
 
     pg_dsn: str
@@ -45,12 +48,12 @@ class Settings:
     reranker_enabled: bool = True
     reranker_provider: str = DEFAULT_RERANKER_PROVIDER
     reranker_model: str = DEFAULT_RERANKER_MODEL
-    default_top_k: int = DEFAULT_TOP_K
-    default_threshold: float = DEFAULT_THRESHOLD
 
     @classmethod
-    def from_env(cls, env: Mapping[str, str] | None = None) -> Settings:
+    def from_env(cls, env: Mapping[str, str] | None = None) -> Mem0Settings:
         """Build settings from the environment, failing fast on anything unusable."""
+        import os
+
         env = env if env is not None else os.environ
 
         pg_dsn = (env.get("FIRM_MEM0_PG_DSN") or "").strip()
@@ -61,9 +64,6 @@ class Settings:
 
         # No team or engineer identity is read: memory is owned by the repo and
         # the firm, never by the person or team that triggered the call.
-        top_k = _positive_int(env, "FIRM_MEM0_TOP_K", DEFAULT_TOP_K)
-        threshold = _probability(env, "FIRM_MEM0_THRESHOLD", DEFAULT_THRESHOLD)
-
         return cls(
             pg_dsn=pg_dsn,
             firm_owner=(env.get("FIRM_MEM0_FIRM_OWNER") or DEFAULT_FIRM_OWNER).strip(),
@@ -76,12 +76,10 @@ class Settings:
             reranker_enabled=(env.get("FIRM_MEM0_RERANK") or "on").strip().lower() not in _FALSEY,
             reranker_provider=(env.get("FIRM_MEM0_RERANKER_PROVIDER") or DEFAULT_RERANKER_PROVIDER).strip(),
             reranker_model=(env.get("FIRM_MEM0_RERANKER_MODEL") or DEFAULT_RERANKER_MODEL).strip(),
-            default_top_k=top_k,
-            default_threshold=threshold,
         )
 
 
-def build_memory_config(settings: Settings) -> dict:
+def build_memory_config(settings: Mem0Settings) -> dict:
     """Render the dict accepted by ``mem0.Memory.from_config``.
 
     Only pgvector's supported keys are emitted — ``PGVectorConfig`` rejects
@@ -126,17 +124,4 @@ def _positive_int(env: Mapping[str, str], key: str, default: int) -> int:
         raise ConfigurationError(f"{key} must be an integer, got {raw!r}") from exc
     if value <= 0:
         raise ConfigurationError(f"{key} must be greater than 0, got {value}")
-    return value
-
-
-def _probability(env: Mapping[str, str], key: str, default: float) -> float:
-    raw = (env.get(key) or "").strip()
-    if not raw:
-        return default
-    try:
-        value = float(raw)
-    except ValueError as exc:
-        raise ConfigurationError(f"{key} must be a number, got {raw!r}") from exc
-    if not 0.0 <= value <= 1.0:
-        raise ConfigurationError(f"{key} must be between 0.0 and 1.0, got {value}")
     return value

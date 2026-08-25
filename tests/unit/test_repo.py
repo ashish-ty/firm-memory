@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 
-from firm_mem0.repo import DEFAULT_REPO_SLUG, resolve_repo_slug, slug_from_remote_url
+from firm_memory.repo import DEFAULT_REPO_SLUG, resolve_repo_slug, slug_from_remote_url
 
 
 @pytest.mark.parametrize(
@@ -21,6 +21,7 @@ from firm_mem0.repo import DEFAULT_REPO_SLUG, resolve_repo_slug, slug_from_remot
     ],
 )
 def test_slug_from_remote_url_is_host_independent(url, expected):
+    """The same project over SSH, HTTPS or a host alias must be one identity."""
     assert slug_from_remote_url(url) == expected
 
 
@@ -34,22 +35,22 @@ def test_env_override_wins_over_git():
     def runner(_cwd):  # pragma: no cover - must not be called
         raise AssertionError("git should not be consulted when the override is set")
 
-    slug = resolve_repo_slug(cwd="/x/y", env={"FIRM_MEM0_REPO": "pinned-repo"}, runner=runner)
-    assert slug == "pinned-repo"
+    assert resolve_repo_slug(cwd="/x/y", env={"FIRM_MEMORY_REPO": "pinned-repo"}, runner=runner) == "pinned-repo"
+
+
+def test_the_pre_platform_override_still_works():
+    """An existing deployment must not silently repartition on upgrade."""
+    slug = resolve_repo_slug(cwd="/x/y", env={"FIRM_MEM0_REPO": "legacy-repo"}, runner=lambda _c: "")
+    assert slug == "legacy-repo"
 
 
 def test_resolves_from_git_remote():
-    slug = resolve_repo_slug(
-        cwd="/x/y",
-        env={},
-        runner=lambda _cwd: "git@gitlab.com:acme/billing-svc.git",
-    )
+    slug = resolve_repo_slug(cwd="/x/y", env={}, runner=lambda _cwd: "git@gitlab.com:acme/billing-svc.git")
     assert slug == "acme-billing-svc"
 
 
 def test_falls_back_to_directory_basename_without_remote():
-    slug = resolve_repo_slug(cwd="/x/y/Billing_Svc", env={}, runner=lambda _cwd: "")
-    assert slug == "billing_svc"
+    assert resolve_repo_slug(cwd="/x/y/Billing_Svc", env={}, runner=lambda _cwd: "") == "billing_svc"
 
 
 def test_falls_back_when_git_is_unavailable():
@@ -61,3 +62,22 @@ def test_falls_back_when_git_is_unavailable():
 
 def test_last_resort_slug_is_stable():
     assert resolve_repo_slug(cwd="/", env={}, runner=lambda _cwd: "") == DEFAULT_REPO_SLUG
+
+
+def test_git_remote_reader_works_against_a_real_checkout(tmp_path):
+    """The default runner must actually read a git remote, not just be mockable."""
+    from firm_memory.repo import _read_git_remote
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(
+        ["git", "remote", "add", "origin", "git@gitlab.com:acme/billing-svc.git"], cwd=tmp_path, check=True
+    )
+    assert _read_git_remote(str(tmp_path)) == "git@gitlab.com:acme/billing-svc.git"
+
+
+def test_git_remote_reader_raises_without_a_remote(tmp_path):
+    from firm_memory.repo import _read_git_remote
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    with pytest.raises(subprocess.CalledProcessError):
+        _read_git_remote(str(tmp_path))

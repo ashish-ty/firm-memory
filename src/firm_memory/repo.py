@@ -1,13 +1,16 @@
 """Deterministic repo identity.
 
-The repo slug is the primary partition key for code memory, so it must resolve
-to the same value on every machine and survive a checkout being moved or
-renamed. Deriving it from the git remote achieves that with zero per-developer
-setup; the directory basename is only a last resort.
+The repo slug is a scope axis (:mod:`firm_memory.scope`), so it must resolve to
+the same value on every machine and survive a checkout being moved or renamed.
+Deriving it from the git remote achieves that with zero per-developer setup; the
+directory basename is only a last resort.
 
-Algorithm intentionally mirrors ``integrations/mem0-plugin/scripts/_project.py``
-in the mem0 repo so memory written by the editor plugin and by application code
-lands in the same namespace.
+This is a **platform** concern, not a provider one: two providers must agree on
+what ``oms`` means, or a migration silently repartitions the pool.
+
+The algorithm intentionally matches the one used by the mem0 editor plugin
+(``integrations/mem0-plugin/scripts/_project.py``), so memory written by the
+plugin and by application code lands in the same scope.
 """
 
 from __future__ import annotations
@@ -18,7 +21,9 @@ import subprocess
 from collections.abc import Callable, Mapping
 
 DEFAULT_REPO_SLUG = "unknown-repo"
-REPO_ENV_VAR = "FIRM_MEM0_REPO"
+REPO_ENV_VAR = "FIRM_MEMORY_REPO"
+#: Honoured so deployments predating the platform rename keep working.
+LEGACY_REPO_ENV_VAR = "FIRM_MEM0_REPO"
 
 _PROTOCOL_PREFIXES = ("https://", "http://", "ssh://", "git://")
 _UNSAFE_CHARS = re.compile(r"[^a-z0-9._-]+")
@@ -81,15 +86,16 @@ def resolve_repo_slug(
 ) -> str:
     """Resolve the repo slug for *cwd*.
 
-    Resolution order: explicit ``FIRM_MEM0_REPO`` override, then the git
-    ``origin`` remote, then the directory basename, then
-    :data:`DEFAULT_REPO_SLUG`. ``runner`` is injectable for testing.
+    Resolution order: explicit ``FIRM_MEMORY_REPO`` override (or the legacy
+    ``FIRM_MEM0_REPO``), then the git ``origin`` remote, then the directory
+    basename, then :data:`DEFAULT_REPO_SLUG`. ``runner`` is injectable for
+    testing.
     """
     cwd = cwd if cwd is not None else os.getcwd()
     env = env if env is not None else os.environ
     runner = runner or _read_git_remote
 
-    override = (env.get(REPO_ENV_VAR) or "").strip()
+    override = (env.get(REPO_ENV_VAR) or env.get(LEGACY_REPO_ENV_VAR) or "").strip()
     if override:
         return _normalise(override) or DEFAULT_REPO_SLUG
 

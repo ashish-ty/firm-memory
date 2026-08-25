@@ -1,147 +1,236 @@
-# firm-mem0
+# firm-memory
 
-The firm's memory namespace contract over **self-hosted mem0 OSS**.
+**A memory layer that lets our AI coding agents remember how this firm builds
+software, so they stop relearning the same things on every call.**
 
-Every AI application imports `FirmMemory` from here instead of constructing
-`mem0.Memory` directly. That single choke point is what lets the taxonomy,
-retrieval thresholds, vector store, and scoping rules change once rather than in
-each application.
+> CodeGraph answers *"what is the code doing?"*
+> Firm Memory answers *"why do we build it this way?"*
 
-## Why a wrapper at all
+CodeGraph stays authoritative for current code behaviour. Memory holds
+contextual engineering knowledge — and may go stale, which is why **when memory
+and the current code disagree, the code wins.**
 
-mem0's defaults are user-centric; code-heavy workloads are repo-centric. Left to
-itself, each application invents its own keys and the memory pool becomes
-unqueryable within a quarter. This package fixes the contract and enforces it in
-code — an unscoped write is not expressible through the facade.
+---
 
-## The namespace contract
+## The shape of it
 
-mem0 OSS gives three entity axes plus free-form metadata. There is no `app_id`
-(Platform-only), so the axes are spent like this:
-
-| mem0 axis | Meaning | Example |
-|---|---|---|
-| `user_id` | the memory **owner**, prefixed per layer | `repo:acme-billing-svc`, `firm` |
-| `agent_id` | the **repo slug**, derived from the git remote | `acme-billing-svc` |
-| `run_id` | the **task** | `gitlab-issue-4821` |
-| metadata | filterable axes | `type`, `layer`, `repo`, `branch`, `source` |
-
-**An owner is never a person or a team.** There is no per-engineer and no
-per-team pool: the bot is stateless and serves every engineer identically, and
-no team owns a set of use cases, so knowledge belongs to the codebase and to the
-firm. Per-person or per-team pools would fragment the same fact into copies no
-single query can reach.
-
-### Two layers
-
-| Layer | Owner | Scope | Written by |
-|---|---|---|---|
-| `Layer.REPO` | `repo:<slug>` | repo, optionally task | agents (the bulk) |
-| `Layer.FIRM` | `firm` | cross-repo conventions | leads, curated |
-
-Only `REPO` is task-scoped. `FIRM` holds facts that must stay retrievable on the
-*next* task, so binding it to a `run_id` would strand them.
-
-`recall()` unions both layers into **one** `search()` call.
-
-## Repo identity is derived, never configured
-
-`resolve_repo_slug()` reads `git config --get remote.origin.url` and reduces it to
-`owner-repo`, dropping the host so SSH, HTTPS, and host-aliased clones agree.
-The algorithm deliberately matches
-`integrations/mem0-plugin/scripts/_project.py` in the mem0 repo, so memory
-written by the editor plugin and by application code lands in the same
-namespace. Order: `FIRM_MEM0_REPO` override → git remote → directory basename.
-
-## Usage
-
-```python
-from firm_mem0 import FirmMemory, Layer
-
-memory = FirmMemory.from_env()          # scoping resolved from env + git checkout
-
-# Retrieve before acting — this codebase's conventions plus firm standards.
-context = memory.recall("how do we handle database migrations here")
-
-# Capture a durable decision. Scoping is injected; the caller cannot forget it.
-memory.remember(
-    "Rejected the write-through cache: cache-stampede risk under bulk imports.",
-    memory_type="architecture_decisions",
-    branch="main",
-)
-
-# Curated firm-wide convention, stored verbatim rather than LLM-extracted.
-memory.remember("This firm uses pnpm exclusively; never npm or yarn.",
-                layer=Layer.FIRM, infer=False)
-
-# Issue-scoped work (GitLab boards).
-issue = memory.for_task("gitlab-issue-4821")
-issue.remember("Reviewer rejected the retry-on-500 approach; use idempotency keys.",
-               memory_type="review_feedback", source="gitlab")
+```text
+  OpenCode        On-call        Future agent
+      └───────────────┼───────────────┘
+                      │  MCP
+             ┌────────▼─────────┐
+             │  Firm Memory MCP │   thin transport adapter
+             └────────┬─────────┘
+                      │
+             ┌────────▼─────────┐
+             │   Firm Memory    │   taxonomy · scope · provenance · lifecycle
+             └────────┬─────────┘
+                      │  MemoryProvider
+             ┌────────▼─────────┐
+             │      mem0        │   embeddings · vector search · ranking
+             └──────────────────┘
 ```
 
-`FirmMemory` is immutable: `for_task()` returns a new facade sharing the backend.
+The platform owns **what a firm memory means**. The provider owns **how it is
+stored and retrieved**. MCP owns **how agents access it**. That separation is
+the whole point: a second provider can be introduced without changing OpenCode
+or the MCP contract.
+
+---
+
+## Quick start
+
+```bash
+pip install -e '.[mem0,pgvector,rerank,mcp,dev]'
+export FIRM_MEM0_PG_DSN='postgresql://mem0:pw@db.internal:5432/mem0'
+export FIRM_MEMORY_DOMAINS='execution,mcx'      # this repo's domains
+export FIRM_MEMORY_CANDIDATES_PATH='.firm-memory/candidates.json'
+```
+
+```python
+from firm_memory import FirmMemory, MemoryScope, MemoryType
+
+memory = FirmMemory.from_env()          # scoped to this checkout + its domains + the firm
+
+for hit in memory.search("why does OMS reject orders after 15:20"):
+    print(hit.id, hit.content, hit.provenance.reference)
+
+proposal = memory.propose(
+    "Cash strategies stop sending at 15:20 because the exchange rejects after that.",
+    type=MemoryType.BUSINESS_RULE,
+    scope=MemoryScope(domains=("execution",), repos=("oms", "gateway")),
+    reference="mr-4821",
+)
+# Not stored as knowledge yet — it is queued for a human:
+print(proposal.accepted, proposal.candidate_id, proposal.decision.reason)
+
+memory.approvals.approve(proposal.candidate_id, approver="ashish")
+```
+
+Run the MCP server for agents:
+
+```bash
+firm-memory-mcp        # stdio; exposes memory_search / memory_get / memory_propose / memory_correct
+```
+
+---
+
+## The five things this package owns
+
+### 1. Taxonomy
+
+A provider's stock extraction is tuned for consumer assistants (food, hobbies,
+music). Ours is tuned for trading systems. Thirteen types, each with the
+description that drives extraction:
+
+`ARCHITECTURE_DECISION` · `REJECTED_APPROACH` · `CONVENTION` · `REVIEW_PATTERN` ·
+`BUG_FIX` · `TASK_LEARNING` · `TOOLING_SETUP` · `DEPENDENCY_DECISION` ·
+`PERFORMANCE_FINDING` · `BUSINESS_RULE` · `PRODUCTION_ISSUE` · `OWNERSHIP` ·
+`TERMINOLOGY`
+
+Enforced before anything reaches a provider. Both spellings resolve — the member
+name (`BUSINESS_RULE`) and the stable wire slug (`business_rules`).
+
+Just as important are the **exclusions**: no source code, diffs or stack traces;
+no secrets; no facts about individual engineers; no transient state.
+
+### 2. Scope
+
+Independent attributes, not a hierarchy — because firm knowledge does not
+respect a tree:
+
+```json
+{"firm": true, "domains": ["execution"], "repos": ["oms", "gateway"]}
+```
+
+A memory spanning three repos is **stored once** and reachable from each of
+them. There is deliberately **no engineer-level and no team-level scope**: the
+same question must return the same firm knowledge whoever asks, and an identity
+axis would split one fact into copies that drift apart.
+
+### 3. Tiers
+
+The lifetime axis, orthogonal to approval status:
+
+| Tier | What it holds | Task-scoped? |
+| --- | --- | --- |
+| `EPISODIC` | Per-MR working memory — findings and their dispositions | Yes, required |
+| `DURABLE` | Distilled knowledge, written through the approval gate | Never |
+| `INDEX` | One verbatim card per closed issue/MR, kept document-shaped | Never |
+
+Search excludes `EPISODIC` by default. That default is load bearing: to a vector
+store an absent task filter means *"don't care"*, not *"unset"*, so without it
+every MR's scratch state joins ordinary recall. It has a contract test.
+
+### 4. Provenance and lifecycle
+
+Every memory carries where it came from, so an engineer can trace a citation
+back to the MR, issue or interview behind it — and correct it.
+
+```text
+Candidate ─► taxonomy / scope / provenance checks ─► human approval ─► provider.insert()
+```
+
+V1 is **fully human approved**; confidence is recorded from the start so
+automation can be switched on later without a migration. Business rules,
+architecture decisions, firm conventions and production-critical knowledge
+always need a person, whatever the confidence.
+
+**Nothing deletes.** A correction demotes and flags; supersession names the
+replacement. The record that a decision was made — and unmade — survives.
+
+### 5. Reliability
+
+Memory is **best effort**. Reads never raise: a provider outage or a breach of
+the bounded timeout yields an empty result and a recorded metric, so a failed
+recall cannot fail a code review. Writes *do* raise — silently dropping a memory
+an engineer just approved would be worse than an error.
+
+---
 
 ## Configuration
 
-| Variable | Required | Default | Purpose |
-|---|---|---|---|
-| `FIRM_MEM0_PG_DSN` | yes | — | pgvector connection string |
-| `FIRM_MEM0_REPO` | no | git remote | pin the repo slug |
-| `FIRM_MEM0_FIRM_OWNER` | no | `firm` | firm layer owner |
-| `FIRM_MEM0_COLLECTION` | no | `mem0_firm` | pgvector collection |
-| `FIRM_MEM0_RERANK` | no | `on` | `off`/`false` to disable |
-| `FIRM_MEM0_TOP_K` | no | `5` | recall breadth |
-| `FIRM_MEM0_THRESHOLD` | no | `0.3` | recall floor |
+Platform settings are provider-independent; provider settings are read by the
+provider itself. That split is what keeps a provider swap a config change.
 
-All invalid values raise `ConfigurationError` at startup, not mid-request.
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `FIRM_MEMORY_PROVIDER` | `mem0` | Which provider to use |
+| `FIRM_MEMORY_LIMIT` | `5` | Results per search |
+| `FIRM_MEMORY_MIN_SCORE` | `0.3` | Relevance floor |
+| `FIRM_MEMORY_TIMEOUT_SECONDS` | `2.0` | Bounded wait before giving up |
+| `FIRM_MEMORY_DOMAINS` | — | Domains this checkout belongs to |
+| `FIRM_MEMORY_REPO` | *(git remote)* | Override the repo slug |
+| `FIRM_MEMORY_CANDIDATES_PATH` | *(in-process)* | Where proposals wait for a human |
+| `FIRM_MEMORY_AUTO_APPROVE` | `off` | Confidence-based automation |
+| `FIRM_MEM0_PG_DSN` | **required** | pgvector connection string |
+| `FIRM_MEM0_COLLECTION` | `mem0_firm` | Collection name |
+| `FIRM_MEM0_RERANK` | `on` | Local cross-encoder reranking |
 
-## Two OSS constraints this package works around
+`FIRM_MEM0_REPO`, `FIRM_MEM0_TOP_K` and `FIRM_MEM0_THRESHOLD` are still honoured
+so an existing deployment does not change behaviour on upgrade.
 
-Both were found by testing against mem0's real filter pipeline, and both fail
-*silently* (zero rows, no exception) if you get them wrong:
+The deployment is self-hosted with no egress. Business rules like *"MCX orders
+always route through Risk Engine A"* are closer to strategy IP than to code
+comments, and the pool inherits the union of access control across every repo
+feeding it.
 
-1. **`OR` branches must be flat dicts.** Top-level `AND` is flattened by
-   `Memory._process_metadata_filters`, but an `AND` nested inside `OR` passes
-   through verbatim and pgvector compiles it to `payload->>'AND' = ANY(...)`,
-   which matches nothing. Keys within a branch are implicitly ANDed anyway.
-2. **Metadata filters are flat top-level keys.** `_create_memory` flattens
-   metadata into the payload, so the Platform's nested
-   `{"metadata": {"type": ...}}` form raises
-   `Unsupported metadata filter operator: type` on OSS.
+---
 
-`tests/test_oss_filter_contract.py` locks both in against the installed mem0,
-down to the generated SQL. Run it after any mem0 upgrade.
+## Layout
 
-## Taxonomy
+```text
+src/firm_memory/
+├── models.py          canonical Memory · status · tier
+├── taxonomy.py        the firm's vocabulary and its exclusions
+├── scope.py           firm / domains / repos
+├── provenance.py      where a memory came from
+├── lifecycle.py       approval policy and status transitions
+├── memory.py          the API agents and applications import
+├── config.py          platform settings
+├── metrics.py         failure and latency counters
+├── repo.py            deterministic repo identity
+├── providers/
+│   ├── base.py        the interface: insert · search · get · update
+│   ├── registry.py    configuration-driven selection
+│   ├── inmemory.py    dependency-free provider for tests and local use
+│   └── mem0/          namespace · filters · mapping · settings · provider
+├── ingestion/
+│   ├── approval.py    the human gate
+│   └── store.py       where candidates wait
+└── mcp/
+    ├── tools.py       the four tools (no SDK dependency)
+    └── server.py      thin transport adapter
 
-mem0's stock fact extraction is tuned for consumer assistants (food, hobbies,
-music). OSS has no project-scoped `custom_categories`, so the coding taxonomy is
-expressed through `MemoryConfig.custom_instructions` instead — see
-`taxonomy.py`. Category names match the mem0 plugin's so both writers share one
-vocabulary.
+tests/
+├── unit/          modules in isolation
+├── integration/   the API across layers, incl. provider swap
+├── contract/      against the real mem0 filter pipeline
+└── mcp/           the agent-facing surface
+```
 
-The instructions also carry explicit exclusions. **Memory is not RAG over your
-code**: no file contents, diffs, stack traces, secrets, or transient state —
-only the conclusions drawn from them. Without these, transcripts flood the pool
-and drown the signal.
+---
 
 ## Development
 
 ```bash
-uv venv --python 3.12
-uv pip install -e ".[dev,pgvector]"
-.venv/bin/python -m pytest --cov=firm_mem0 --cov-report=term-missing
-.venv/bin/ruff check . && .venv/bin/ruff format --check .
+.venv/bin/python -m pytest -q                      # 261 tests
+.venv/bin/python -m pytest --cov --cov-report=term  # 94% coverage
+.venv/bin/python -m ruff check src tests
 ```
 
-92 tests, 97% coverage. The contract tests exercise the installed mem0 and are
-the ones that matter on upgrade.
+The **contract tests** are the ones to watch. They run our filters through
+mem0's real preprocessing and pgvector's SQL builder, pinning constraints found
+by reading its source — flat `OR` branches, flat metadata keys, list values
+meaning *one of*, and the top-level entity key `Memory.search` requires. If a
+mem0 upgrade breaks one, they fail loudly instead of the pool quietly going
+empty.
 
-## Operating notes
+---
 
-- Measure **recall hit rate**, not memory count. A pool that grows while
-  retrieval quality flatlines means capture rules are too loose.
-- Reranking is a local cross-encoder (`sentence_transformer`), so it adds
-  retrieval quality without any egress. ~150–200ms per call.
-- `infer=False` for curated facts, `infer=True` for conversational capture.
+## Planning documents
+
+`PLAN_OPENCODE_MEMORY.md`, `PLAN_OBSERVABILITY_EVAL.md`, `BRIEF_1_ARCHITECTURE.md`
+and `BRIEF_2_DELIVERY_PLAN.md` predate this refactor. Their strategy still holds;
+their code examples describe the earlier `firm_mem0` API and no longer match the
+package. `docs.md` is the current reference.

@@ -3,43 +3,57 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "firm-mem0"
-version = "0.1.0"
-description = "Firm-wide memory namespace contract and client factory over self-hosted mem0 OSS"
+name = "firm-memory"
+version = "1.0.0"
+description = "Firm-wide engineering memory: a thin, firm-owned contract over a replaceable memory provider"
 readme = "README.md"
-requires-python = ">=3.10"
-dependencies = [
-    "mem0ai>=2.0.14",
-]
+requires-python = ">=3.11"
+# The core package deliberately has no runtime dependencies. A provider brings
+# its own, so a consumer that swaps providers does not keep carrying the old
+# one, and importing firm_memory stays cheap.
+dependencies = []
 
 [project.optional-dependencies]
-# Self-hosted store. pgvector is the default backend in build_memory_config().
+# The default provider.
+mem0 = ["mem0ai>=2.0.14"]
+# Self-hosted store. pgvector is the backend build_memory_config() targets.
 pgvector = ["psycopg[binary,pool]>=3.1"]
 # Local cross-encoder reranking — keeps retrieval quality without leaving the network.
 rerank = ["sentence-transformers>=2.2.0"]
+# The agent-facing MCP server.
+mcp = ["mcp>=1.2"]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=4.1",
     "ruff>=0.6",
+    "mem0ai>=2.0.14",
     "psycopg[binary,pool]>=3.1",
 ]
 
+[project.scripts]
+firm-memory-mcp = "firm_memory.mcp.server:main"
+
 [tool.hatch.build.targets.wheel]
-packages = ["src/firm_mem0"]
+packages = ["src/firm_memory"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 addopts = "-q"
 
 [tool.ruff]
 line-length = 120
-target-version = "py310"
+target-version = "py311"
 # Docs keep hand-wrapped examples; ruff would flatten them into long single lines.
 extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP", "B", "SIM", "RUF"]
 
+[tool.ruff.lint.per-file-ignores]
+# Tests name the behaviour under test; shadowing a builtin in a keyword argument
+# (type=, id=) mirrors the API's own vocabulary.
+"tests/**" = ["A002", "A003"]
+
 [tool.coverage.run]
-source = ["firm_mem0"]
+source = ["firm_memory"]
