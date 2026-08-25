@@ -8,7 +8,6 @@ from firm_memory.taxonomy import (
     EXCLUSIONS,
     MemoryType,
     coerce_type,
-    describe,
     fact_extraction_instructions,
 )
 
@@ -16,7 +15,7 @@ from firm_memory.taxonomy import (
 def test_every_type_has_a_description_driving_extraction():
     """A type with no description would be untaggable by the extractor."""
     assert {category.type for category in CODING_CATEGORIES} == set(MemoryType)
-    assert all(describe(member) for member in MemoryType)
+    assert all(category.description for category in CODING_CATEGORIES)
 
 
 def test_wire_values_are_preserved_for_memory_already_written():

@@ -165,10 +165,12 @@ provider itself. That split is what keeps a provider swap a config change.
 | `FIRM_MEMORY_AUTO_APPROVE` | `off` | Confidence-based automation |
 | `FIRM_MEM0_PG_DSN` | **required** | pgvector connection string |
 | `FIRM_MEM0_COLLECTION` | `mem0_firm` | Collection name |
+| `FIRM_MEM0_POOL_OWNER` | `firm` | `user_id` naming the pool |
 | `FIRM_MEM0_RERANK` | `on` | Local cross-encoder reranking |
 
-`FIRM_MEM0_REPO`, `FIRM_MEM0_TOP_K` and `FIRM_MEM0_THRESHOLD` are still honoured
-so an existing deployment does not change behaviour on upgrade.
+`FIRM_MEM0_REPO`, `FIRM_MEM0_TOP_K`, `FIRM_MEM0_THRESHOLD` and
+`FIRM_MEM0_FIRM_OWNER` are still honoured so an existing deployment does not
+change behaviour on upgrade.
 
 The deployment is self-hosted with no egress. Business rules like *"MCX orders
 always route through Risk Engine A"* are closer to strategy IP than to code
@@ -214,8 +216,8 @@ tests/
 ## Development
 
 ```bash
-.venv/bin/python -m pytest -q                      # 261 tests
-.venv/bin/python -m pytest --cov --cov-report=term  # 94% coverage
+.venv/bin/python -m pytest -q                       # 261 tests (1 skipped without the mcp extra)
+.venv/bin/python -m pytest --cov --cov-report=term   # 94% coverage
 .venv/bin/python -m ruff check src tests
 ```
 

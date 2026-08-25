@@ -185,7 +185,7 @@ mem0.
 
 | Axis | Meaning here |
 | --- | --- |
-| `user_id` | the **pool owner** — one constant for the whole firm |
+| `user_id` | the **pool owner** — one constant for the whole firm (`FIRM_MEM0_POOL_OWNER`) |
 | `agent_id` | the repo slug (repo-primary memories only) |
 | `run_id` | the task (episodic tier only) |
 

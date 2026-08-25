@@ -59,7 +59,7 @@ class Mem0Provider:
     ) -> None:
         self._memory = memory
         self._settings = settings
-        self._namespace = namespace or Namespace(pool_owner=settings.firm_owner)
+        self._namespace = namespace or Namespace(pool_owner=settings.pool_owner)
 
     @classmethod
     def from_settings(

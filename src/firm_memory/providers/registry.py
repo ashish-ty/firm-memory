@@ -34,12 +34,6 @@ def register_provider(name: str, factory: ProviderFactory) -> None:
     _REGISTRY[name.strip().lower()] = factory
 
 
-def available_providers() -> tuple[str, ...]:
-    """Names that :func:`get_provider` will accept, sorted."""
-    _register_builtins()
-    return tuple(sorted(_REGISTRY))
-
-
 def get_provider(settings: Settings) -> MemoryProvider:
     """Build the provider named by *settings*."""
     _register_builtins()

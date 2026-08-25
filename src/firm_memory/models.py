@@ -130,10 +130,6 @@ class Memory:
         """Return a copy carrying a retrieval relevance score."""
         return replace(self, score=score)
 
-    def with_metadata(self, **values: str) -> Memory:
-        """Return a copy with *values* merged over the existing metadata."""
-        return replace(self, metadata={**self.metadata, **values})
-
     def touched(self) -> Memory:
         """Return a copy stamped as updated now."""
         return replace(self, updated_at=datetime.now(UTC))

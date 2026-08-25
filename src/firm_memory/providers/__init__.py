@@ -9,12 +9,11 @@ firm change memory engines without touching OpenCode or the MCP contract.
 from __future__ import annotations
 
 from .base import MemoryProvider, MigratableProvider
-from .registry import available_providers, get_provider, register_provider
+from .registry import get_provider, register_provider
 
 __all__ = [
     "MemoryProvider",
     "MigratableProvider",
-    "available_providers",
     "get_provider",
     "register_provider",
 ]

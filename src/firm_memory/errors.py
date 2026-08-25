@@ -42,9 +42,5 @@ class ProviderError(FirmMemoryError):
     """The underlying memory provider failed. Wraps the original exception as ``__cause__``."""
 
 
-class ProviderTimeoutError(ProviderError):
-    """The provider exceeded the bounded timeout. Treated as an empty result by the API."""
-
-
 class UnknownProviderError(ConfigurationError):
     """Configuration named a provider that is not registered."""

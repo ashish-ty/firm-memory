@@ -13,6 +13,12 @@ def test_missing_dsn_fails_fast_at_startup():
         Mem0Settings.from_env({})
 
 
+def test_the_pre_platform_pool_owner_variable_is_still_honoured():
+    """An existing deployment must not silently repartition on upgrade."""
+    settings = Mem0Settings.from_env({**MINIMAL_ENV, "FIRM_MEM0_FIRM_OWNER": "acme-eng"})
+    assert settings.pool_owner == "acme-eng"
+
+
 def test_no_caller_identity_is_read():
     settings = Mem0Settings.from_env({**MINIMAL_ENV, "USER": "ashish", "FIRM_MEM0_TEAM": "platform"})
     assert not hasattr(settings, "team")

@@ -133,11 +133,6 @@ _BY_VALUE = {category.type.value: category for category in CODING_CATEGORIES}
 _BY_NAME = {category.type.name: category for category in CODING_CATEGORIES}
 
 
-def describe(memory_type: MemoryType) -> str:
-    """Return the extraction description for *memory_type*."""
-    return _BY_VALUE[memory_type.value].description
-
-
 def coerce_type(value: MemoryType | str) -> MemoryType:
     """Resolve *value* to a :class:`MemoryType`, accepting either spelling.
 

@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 from ...errors import ConfigurationError
 from ...taxonomy import fact_extraction_instructions
-from .namespace import DEFAULT_FIRM_OWNER
+from .namespace import DEFAULT_POOL_OWNER
 
 DEFAULT_COLLECTION = "mem0_firm"
 DEFAULT_EMBEDDING_DIMS = 1536
@@ -38,7 +38,7 @@ class Mem0Settings:
     """Validated configuration for the firm's self-hosted mem0 deployment."""
 
     pg_dsn: str
-    firm_owner: str = DEFAULT_FIRM_OWNER
+    pool_owner: str = DEFAULT_POOL_OWNER
     collection_name: str = DEFAULT_COLLECTION
     embedding_dims: int = DEFAULT_EMBEDDING_DIMS
     llm_provider: str = DEFAULT_LLM_PROVIDER
@@ -66,7 +66,10 @@ class Mem0Settings:
         # the firm, never by the person or team that triggered the call.
         return cls(
             pg_dsn=pg_dsn,
-            firm_owner=(env.get("FIRM_MEM0_FIRM_OWNER") or DEFAULT_FIRM_OWNER).strip(),
+            # FIRM_MEM0_FIRM_OWNER is the pre-platform spelling, still honoured.
+            pool_owner=(
+                env.get("FIRM_MEM0_POOL_OWNER") or env.get("FIRM_MEM0_FIRM_OWNER") or DEFAULT_POOL_OWNER
+            ).strip(),
             collection_name=(env.get("FIRM_MEM0_COLLECTION") or DEFAULT_COLLECTION).strip(),
             embedding_dims=_positive_int(env, "FIRM_MEM0_EMBEDDING_DIMS", DEFAULT_EMBEDDING_DIMS),
             llm_provider=(env.get("FIRM_MEM0_LLM_PROVIDER") or DEFAULT_LLM_PROVIDER).strip(),

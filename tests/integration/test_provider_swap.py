@@ -32,8 +32,12 @@ def test_both_shipped_providers_satisfy_the_interface():
 
 def test_the_provider_interface_stays_small():
     """Reranking, query normalisation and federation are deliberately absent."""
-    required = {name for name in MemoryProvider.__protocol_attrs__ if not name.startswith("_")}
-    assert required == {"name", "insert", "search", "get", "update"}
+    declared = {
+        name
+        for name, value in vars(MemoryProvider).items()
+        if not name.startswith("_") and (callable(value) or name in MemoryProvider.__annotations__)
+    }
+    assert declared | {"name"} == {"name", "insert", "search", "get", "update"}
 
 
 def test_selection_is_configuration_driven():

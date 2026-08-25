@@ -49,7 +49,6 @@ from ...scope import DOMAIN_PREFIX, FIRM_ATOM, REPO_PREFIX, MemoryScope
 #: One pool for the whole firm. Not an engineer, not a team — see
 #: :mod:`firm_memory.scope`.
 DEFAULT_POOL_OWNER = "firm"
-DEFAULT_FIRM_OWNER = DEFAULT_POOL_OWNER  # retained name for existing deployments
 
 OWNER_KEY = "owner"
 LAYER_KEY = "layer"

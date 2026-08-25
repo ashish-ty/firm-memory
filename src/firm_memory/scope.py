@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from .errors import ScopeError
 
@@ -103,20 +103,6 @@ class MemoryScope:
     def overlaps(self, other: MemoryScope) -> bool:
         """Whether *other* shares at least one atom with this scope."""
         return bool(set(self.atoms) & set(other.atoms))
-
-    # --- immutable derivation ------------------------------------------------
-
-    def with_repos(self, *repos: str) -> MemoryScope:
-        """Return a copy also covering *repos*."""
-        return replace(self, repos=self.repos + tuple(repos))
-
-    def with_domains(self, *domains: str) -> MemoryScope:
-        """Return a copy also covering *domains*."""
-        return replace(self, domains=self.domains + tuple(domains))
-
-    def as_firm_wide(self) -> MemoryScope:
-        """Return a copy promoted to firm-wide reach."""
-        return replace(self, firm=True)
 
     def to_dict(self) -> dict:
         """Render the JSON form used on the MCP boundary and in exports."""

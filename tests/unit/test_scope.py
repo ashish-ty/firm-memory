@@ -52,9 +52,3 @@ def test_round_trips_through_its_json_form():
     scope = MemoryScope(firm=True, domains=("execution",), repos=("oms",))
     assert MemoryScope.from_dict(scope.to_dict()) == scope
 
-
-def test_derivation_does_not_mutate_the_original():
-    scope = MemoryScope(repos=("oms",))
-    derived = scope.with_repos("gateway").as_firm_wide()
-    assert derived.repos == ("oms", "gateway") and derived.firm is True
-    assert scope.repos == ("oms",) and scope.firm is False
