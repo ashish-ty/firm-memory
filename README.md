@@ -227,12 +227,3 @@ by reading its source — flat `OR` branches, flat metadata keys, list values
 meaning *one of*, and the top-level entity key `Memory.search` requires. If a
 mem0 upgrade breaks one, they fail loudly instead of the pool quietly going
 empty.
-
----
-
-## Planning documents
-
-`PLAN_OPENCODE_MEMORY.md`, `PLAN_OBSERVABILITY_EVAL.md`, `BRIEF_1_ARCHITECTURE.md`
-and `BRIEF_2_DELIVERY_PLAN.md` predate this refactor. Their strategy still holds;
-their code examples describe the earlier `firm_mem0` API and no longer match the
-package. `docs.md` is the current reference.
