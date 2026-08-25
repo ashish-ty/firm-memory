@@ -31,8 +31,6 @@ from .provenance import Provenance
 from .scope import MemoryScope
 from .taxonomy import MemoryType, coerce_type
 
-_EMPTY_METADATA: Mapping[str, str] = MappingProxyType({})
-
 
 class MemoryStatus(StrEnum):
     """Where a memory sits in the approval and correction lifecycle."""
@@ -93,7 +91,7 @@ class Memory:
     #: Id of the memory that replaced this one. Supersession replaces deletion:
     #: the firm keeps its history rather than losing the record of a decision.
     superseded_by: str | None = None
-    metadata: Mapping[str, str] = field(default=_EMPTY_METADATA)
+    metadata: Mapping[str, str] = field(default_factory=dict)
     id: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
