@@ -16,3 +16,6 @@ PLAN_*.md
 BRIEF_*.md
 
 .vscode/
+
+# uv writes this for the local environment; not meaningful for a library.
+uv.lock

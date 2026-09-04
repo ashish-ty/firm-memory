@@ -50,8 +50,12 @@ def test_config_carries_the_firm_taxonomy_not_mem0_defaults():
 
 
 def test_reranking_is_local_by_default_so_nothing_leaves_the_network():
-    config = build_memory_config(Mem0Settings.from_env(MINIMAL_ENV))
-    assert config["reranker"]["provider"] == "sentence_transformer"
+    """The policy lives in the settings; whether it is emitted depends on the
+    optional package being installed, which is covered separately below."""
+    settings = Mem0Settings.from_env(MINIMAL_ENV)
+    assert settings.reranker_enabled is True
+    assert settings.reranker_provider == "sentence_transformer"
+    assert "cross-encoder/" in settings.reranker_model
 
 
 def test_reranker_can_be_disabled():
@@ -62,3 +66,23 @@ def test_reranker_can_be_disabled():
 def test_unparseable_numeric_override_is_rejected():
     with pytest.raises(ConfigurationError, match="FIRM_MEM0_EMBEDDING_DIMS"):
         Mem0Settings.from_env({**MINIMAL_ENV, "FIRM_MEM0_EMBEDDING_DIMS": "many"})
+
+
+def test_a_missing_reranker_dependency_disables_it_rather_than_failing():
+    """Memory is best-effort: an absent ranking model must not stop it starting."""
+    settings = Mem0Settings.from_env(MINIMAL_ENV)
+    assert settings.reranker_enabled is True
+
+    config = build_memory_config(settings)
+    import importlib.util
+
+    if importlib.util.find_spec("sentence_transformers") is None:
+        assert "reranker" not in config, "a missing optional dependency must not be emitted"
+    else:  # pragma: no cover - only when the rerank extra is installed
+        assert config["reranker"]["provider"] == "sentence_transformer"
+
+
+def test_an_unrecognised_reranker_provider_is_left_alone():
+    """We do not know its dependency, so we must not silently drop it."""
+    settings = Mem0Settings.from_env({**MINIMAL_ENV, "FIRM_MEM0_RERANKER_PROVIDER": "zero_entropy"})
+    assert build_memory_config(settings)["reranker"]["provider"] == "zero_entropy"

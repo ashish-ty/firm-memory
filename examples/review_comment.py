@@ -132,7 +132,8 @@ def configure() -> None:
     os.environ.setdefault("FIRM_MEM0_EMBEDDING_DIMS", "384")
     # Cross-encoder reranking is a retrieval-quality feature and pulls in torch
     # via sentence-transformers, which this script does not need to demonstrate
-    # extraction and approval. Turn it on for real retrieval work:
+    # extraction and approval. The library degrades on its own if the package is
+    # missing, so this only avoids the warning. For real retrieval work:
     #   pip install -e '.[rerank]' && export FIRM_MEM0_RERANK=on
     os.environ.setdefault("FIRM_MEM0_RERANK", "off")
 

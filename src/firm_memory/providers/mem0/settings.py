@@ -13,8 +13,10 @@ likely to quietly break that property.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
+from importlib.util import find_spec
 
 from ...errors import ConfigurationError
 from ...taxonomy import fact_extraction_instructions
@@ -31,6 +33,17 @@ DEFAULT_RERANKER_PROVIDER = "sentence_transformer"
 DEFAULT_RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 _FALSEY = frozenset({"0", "off", "false", "no"})
+
+logger = logging.getLogger(__name__)
+
+#: The import each reranker provider needs. Reranking is a retrieval-quality
+#: enhancement, not a correctness requirement, so a missing one is a warning
+#: rather than a failure to start.
+_RERANKER_IMPORTS: dict[str, str] = {
+    "sentence_transformer": "sentence_transformers",
+    "huggingface": "sentence_transformers",
+    "cohere": "cohere",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,13 +154,37 @@ def build_memory_config(settings: Mem0Settings) -> dict:
         "custom_instructions": fact_extraction_instructions(),
     }
 
-    if settings.reranker_enabled:
+    if settings.reranker_enabled and _reranker_available(settings.reranker_provider):
         config["reranker"] = {
             "provider": settings.reranker_provider,
             "config": {"model": settings.reranker_model},
         }
 
     return config
+
+
+def _reranker_available(provider: str) -> bool:
+    """Whether *provider*'s dependency is installed.
+
+    Memory is best-effort infrastructure. Refusing to start the whole memory
+    system because an optional ranking model is absent trades a small quality
+    loss for a total outage, which is the wrong way round — so a missing
+    dependency degrades to no reranking and says so.
+    """
+    required = _RERANKER_IMPORTS.get(provider)
+    if required is None:
+        return True
+
+    if find_spec(required) is not None:
+        return True
+
+    logger.warning(
+        "Reranking is enabled but %r is not installed, so it is disabled for this session. "
+        "Retrieval still works, ranked by the vector store alone. Install it with: "
+        "pip install 'firm-memory[rerank]'",
+        required,
+    )
+    return False
 
 
 def _optional(env: Mapping[str, str], key: str) -> str | None:
