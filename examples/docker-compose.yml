@@ -1,0 +1,30 @@
+# A Postgres with pgvector already in it, for examples/review_comment.py.
+#
+#   docker compose -f examples/docker-compose.yml up -d
+#
+# Matches the default DSN:
+#   FIRM_MEM0_PG_DSN=postgresql://mem0:pw@localhost:5432/mem0
+#
+# Throwaway credentials for local development. Do not reuse them anywhere real.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: firm-memory-pg
+    environment:
+      POSTGRES_USER: mem0
+      POSTGRES_PASSWORD: pw
+      POSTGRES_DB: mem0
+    ports:
+      - "5432:5432"
+    volumes:
+      - firm-memory-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # mem0 creates the vector extension itself; this only waits for the server.
+      test: ["CMD-SHELL", "pg_isready -U mem0 -d mem0"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  firm-memory-pgdata:

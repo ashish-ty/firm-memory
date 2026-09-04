@@ -149,21 +149,59 @@ def quieten_dependencies() -> None:
         logging.getLogger(name).setLevel(logging.CRITICAL)
 
 
-def check_database(provider: Mem0Provider, scope: MemoryScope) -> None:
-    """Fail fast, and legibly, when the store is unreachable.
+DOCKER_HINT = """Start one with Docker (the image ships pgvector already):
 
-    Without this the run continues: deduplication context comes back empty, the
-    write fails only at approval, and the operator sees a wall of pool retries
-    with no summary.
+  docker compose -f examples/docker-compose.yml up -d
+
+or directly:
+
+  docker run -d --name firm-memory-pg -p 5432:5432 \\
+      -e POSTGRES_USER=mem0 -e POSTGRES_PASSWORD=pw -e POSTGRES_DB=mem0 \\
+      pgvector/pgvector:pg16"""
+
+
+def check_database(dsn: str) -> None:
+    """Verify the store is reachable and has pgvector, before mem0 touches it.
+
+    Done with a direct connection and a short timeout because mem0's pool waits
+    30 seconds before giving up, and then reports a pool timeout rather than the
+    actual cause. Checking here turns a slow, vague failure into a fast, precise
+    one — and catches the commonest real problem, which is a reachable database
+    with no ``vector`` extension in it.
     """
     try:
-        provider.search("connectivity check", scope, 1)
-    except Exception as exc:
+        import psycopg
+    except ImportError:  # pragma: no cover - the preflight check covers this
+        return
+
+    try:
+        with psycopg.connect(dsn, connect_timeout=5) as connection:
+            # Availability, not installation: mem0 runs CREATE EXTENSION itself
+            # in _ensure_collection, so a fresh database without the extension
+            # is fine. What it cannot do is install pgvector into a server that
+            # does not ship it.
+            available = connection.execute(
+                "SELECT 1 FROM pg_available_extensions WHERE name = 'vector'"
+            ).fetchone()
+    except psycopg.OperationalError as exc:
         sys.exit(
-            f"Could not reach the vector store.\n\n  {type(exc).__name__}: {str(exc).splitlines()[0]}\n\n"
-            f"FIRM_MEM0_PG_DSN is {os.environ['FIRM_MEM0_PG_DSN']!r}.\n"
-            "Check the database is running and that pgvector is installed in it."
+            f"Cannot reach the database at {_safe_dsn(dsn)}\n\n"
+            f"  {str(exc).strip().splitlines()[0]}\n\n" + DOCKER_HINT
         )
+
+    if available is None:
+        sys.exit(
+            f"Connected to {_safe_dsn(dsn)}, but this server does not have pgvector.\n"
+            "mem0 creates the extension itself, but it cannot install one the server lacks.\n\n"
+            "Use a server that ships it:\n\n" + DOCKER_HINT
+        )
+
+
+def _safe_dsn(dsn: str) -> str:
+    """The DSN with any password removed, so it is safe to print."""
+    import re
+
+    return re.sub(r"://([^:/@]+):[^@]*@", r"://\1:***@", dsn)
 
 
 def read_comment(args: argparse.Namespace) -> str:
@@ -218,11 +256,11 @@ def main() -> None:
     comment = read_comment(args)
 
     quieten_dependencies()
+    check_database(os.environ["FIRM_MEM0_PG_DSN"])
 
     settings = Settings.from_env(os.environ)
     provider = Mem0Provider.from_settings(settings)
     scope = MemoryScope(domains=(args.domain,), repos=(args.repo,))
-    check_database(provider, scope)
 
     with FirmMemory(
         provider,

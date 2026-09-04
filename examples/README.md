@@ -40,6 +40,31 @@ FIRM_MEM0_PG_DSN=postgresql://mem0:pw@localhost:5432/mem0
 Exported shell variables override the file. **Do not hardcode a key into the
 script** — this repository is public.
 
+### A database with pgvector
+
+The `pgvector/pgvector` image ships the extension, so nothing else is needed:
+
+```bash
+docker compose -f examples/docker-compose.yml up -d
+```
+
+That matches the default DSN above. mem0 creates the `vector` extension and its
+table on first use, so there is no schema step.
+
+If you would rather use a Postgres you already run, it needs pgvector
+*available* — check with:
+
+```sql
+SELECT 1 FROM pg_available_extensions WHERE name = 'vector';
+```
+
+If that returns nothing, the server cannot host this pool however the database
+is configured. On Homebrew, `brew install pgvector` adds it to `postgresql@N`.
+
+The script checks reachability and pgvector availability before mem0 opens a
+connection, so a stopped database fails in a tenth of a second with the reason,
+rather than after mem0's 30-second pool timeout with only a pool error.
+
 The script defaults everything else, so it works as-is:
 
 | | Default | Why |
