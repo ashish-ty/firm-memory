@@ -42,6 +42,11 @@ class Settings:
 
     provider: str = DEFAULT_PROVIDER
     default_limit: int = DEFAULT_LIMIT
+    #: Relevance floor. Note that a hybrid provider's scores are compressed:
+    #: mem0 divides the combined score by the number of signals in play (2.0
+    #: with keyword search, 2.5 with entity boosts too), so a memory with a
+    #: strong semantic match of 0.8 and no keyword hit surfaces as 0.4. Tune
+    #: this against observed scores, not against cosine similarity intuitions.
     min_score: float = DEFAULT_MIN_SCORE
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
     auto_approve_enabled: bool = False
@@ -53,6 +58,12 @@ class Settings:
     #: be a path: the agent that proposes and the engineer who approves are
     #: different processes, hours apart.
     candidates_path: str | None = None
+    #: The model that distils raw material into candidates. Unset means the
+    #: platform has no ingestion path at all, which is a valid deployment:
+    #: search and human-curated memory work without it.
+    extraction_model: str | None = None
+    extraction_api_key: str | None = None
+    extraction_api_base: str | None = None
     #: The environment the selected provider reads its own configuration from.
     env: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
 
@@ -76,6 +87,9 @@ class Settings:
             ),
             default_domains=_slug_list(env.get("FIRM_MEMORY_DOMAINS")),
             candidates_path=(env.get("FIRM_MEMORY_CANDIDATES_PATH") or "").strip() or None,
+            extraction_model=(env.get("FIRM_MEMORY_EXTRACTION_MODEL") or "").strip() or None,
+            extraction_api_key=(env.get("FIRM_MEMORY_EXTRACTION_API_KEY") or "").strip() or None,
+            extraction_api_base=(env.get("FIRM_MEMORY_EXTRACTION_API_BASE") or "").strip() or None,
             env=MappingProxyType(env),
         )
 

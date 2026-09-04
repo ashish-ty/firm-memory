@@ -34,8 +34,9 @@ from typing import Any, TypeVar
 
 from . import metrics as metric_names
 from .config import Settings
-from .errors import InvalidInputError, ProviderError
+from .errors import ConfigurationError, InvalidInputError, ProviderError
 from .ingestion.approval import ApprovalQueue, Candidate
+from .ingestion.extraction import FactExtractor, LLMFactExtractor, SourceDocument, extract_all
 from .ingestion.store import CandidateStore, InMemoryCandidateStore, JsonFileCandidateStore
 from .lifecycle import ApprovalDecision, MemoryStatus, evaluate
 from .lifecycle import dispute as dispute_memory
@@ -56,6 +57,27 @@ from .taxonomy import MemoryType, coerce_type
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+
+def _default_extractor(settings: Settings) -> FactExtractor | None:
+    """Build the extractor when a model is configured, otherwise none.
+
+    Absent configuration is not an error: a deployment that only searches and
+    curates by hand never ingests, and should not be made to install an LLM
+    client to start up.
+    """
+    if not settings.extraction_model:
+        return None
+
+    from .ingestion.llm import LiteLLMClient
+
+    return LLMFactExtractor(
+        LiteLLMClient(
+            settings.extraction_model,
+            api_key=settings.extraction_api_key,
+            api_base=settings.extraction_api_base,
+        )
+    )
 
 
 def _default_candidate_store(settings: Settings) -> CandidateStore:
@@ -108,8 +130,10 @@ class FirmMemory:
         settings: Settings | None = None,
         scope: MemoryScope | None = None,
         candidates: CandidateStore | None = None,
+        extractor: FactExtractor | None = None,
     ) -> None:
         self._provider = provider
+        self._extractor = extractor
         self._settings = settings or Settings()
         self._scope = scope or MemoryScope.firm_wide()
         self._metrics = Metrics()
@@ -127,6 +151,7 @@ class FirmMemory:
         cwd: str | None = None,
         env: Mapping[str, str] | None = None,
         provider: MemoryProvider | None = None,
+        extractor: FactExtractor | None = None,
     ) -> FirmMemory:
         """Build the API from configuration and the current checkout.
 
@@ -140,7 +165,12 @@ class FirmMemory:
             resolve_repo_slug(cwd, env=settings.env),
             domains=settings.default_domains,
         )
-        return cls(provider or get_provider(settings), settings=settings, scope=scope)
+        return cls(
+            provider or get_provider(settings),
+            settings=settings,
+            scope=scope,
+            extractor=extractor if extractor is not None else _default_extractor(settings),
+        )
 
     # --- properties ----------------------------------------------------------
 
@@ -164,12 +194,37 @@ class FirmMemory:
         """The queue of candidates awaiting a human."""
         return self._approvals
 
+    # --- ingestion -----------------------------------------------------------
+
+    def ingest(self, *documents: SourceDocument) -> list[Candidate]:
+        """Distil raw material into candidates awaiting review.
+
+        The only way content enters the platform. Nothing here writes to the
+        provider: extraction produces candidates, and a candidate becomes firm
+        knowledge only when a person approves it. An ingestion run that a
+        reviewer never looks at leaves the pool exactly as it was.
+
+        Returns the queued candidates, or an empty list when the source held no
+        durable knowledge — which is a normal and frequent outcome.
+        """
+        if self._extractor is None:
+            raise ConfigurationError(
+                "Ingestion requires an extractor. Pass one to FirmMemory(extractor=...), "
+                "or configure FIRM_MEMORY_EXTRACTION_MODEL and install: pip install 'firm-memory[extract]'"
+            )
+        if not documents:
+            return []
+
+        extracted = extract_all(self._extractor, documents)
+        return [self._approvals.submit(candidate) for candidate in extracted]
+
     def for_scope(self, scope: MemoryScope) -> FirmMemory:
         """Return a view scoped to *scope*, sharing this instance's provider and queue."""
         clone = FirmMemory(self._provider, settings=self._settings, scope=scope)
         clone._metrics = self._metrics
         clone._executor = self._executor
         clone._approvals = self._approvals
+        clone._extractor = self._extractor
         return clone
 
     # --- retrieval -----------------------------------------------------------

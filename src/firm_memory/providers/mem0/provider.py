@@ -39,9 +39,15 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 logger = logging.getLogger(__name__)
 
-#: mem0's own floor. Score filtering is the platform's job (it applies
-#: ``min_score`` uniformly across providers), so the provider asks for
-#: everything and lets the caller cut.
+#: Ask mem0 for everything and let the platform cut, for a specific reason.
+#: mem0 2.x runs a hybrid search — dense vectors, then Postgres full-text over
+#: ``text_lemmatized``, then entity boosts — but its ``threshold`` gates the
+#: *semantic* score **before** the keyword score is fused in
+#: (``mem0/utils/scoring.py``). Its default of 0.1 therefore discards exactly
+#: the memories hybrid search exists to find: an exact match on an identifier
+#: that embeds poorly — an error code, a ticker, "CBE" — is dropped before its
+#: keyword score can rescue it. Score filtering is the platform's job anyway,
+#: since ``min_score`` must mean the same thing across providers.
 _PROVIDER_THRESHOLD = 0.0
 
 

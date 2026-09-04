@@ -25,15 +25,21 @@ def test_no_caller_identity_is_read():
     assert not hasattr(settings, "engineer")
 
 
-def test_config_targets_pgvector_with_only_supported_keys():
-    """PGVectorConfig rejects extra fields outright."""
+def test_config_targets_pgvector_and_the_real_schema_accepts_it():
+    """PGVectorConfig rejects extra fields outright, so validate against it."""
+    pgvector_config = pytest.importorskip(
+        "mem0.configs.vector_stores.pgvector", reason="mem0ai not installed"
+    )
     config = build_memory_config(Mem0Settings.from_env(MINIMAL_ENV))
+
     assert config["vector_store"]["provider"] == "pgvector"
-    assert set(config["vector_store"]["config"]) <= {
-        "connection_string",
-        "collection_name",
-        "embedding_model_dims",
-    }
+    # Constructing it is the assertion: an unsupported key raises here.
+    pgvector_config.PGVectorConfig(**config["vector_store"]["config"])
+
+
+def test_index_choice_is_configurable():
+    config = build_memory_config(Mem0Settings.from_env({**MINIMAL_ENV, "FIRM_MEM0_HNSW": "off"}))
+    assert config["vector_store"]["config"]["hnsw"] is False
 
 
 def test_config_carries_the_firm_taxonomy_not_mem0_defaults():

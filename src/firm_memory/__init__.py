@@ -30,6 +30,7 @@ from __future__ import annotations
 from .config import Settings
 from .errors import (
     ConfigurationError,
+    ExtractionError,
     FirmMemoryError,
     InvalidInputError,
     LifecycleError,
@@ -38,7 +39,15 @@ from .errors import (
     TaxonomyError,
     UnknownProviderError,
 )
-from .ingestion import ApprovalQueue, Candidate, CandidateStore
+from .ingestion import (
+    ApprovalQueue,
+    Candidate,
+    CandidateStore,
+    CompletionClient,
+    FactExtractor,
+    LLMFactExtractor,
+    SourceDocument,
+)
 from .lifecycle import ApprovalDecision, ApprovalPolicy, evaluate, requires_human_approval
 from .memory import FirmMemory, Proposal
 from .metrics import Metrics
@@ -67,10 +76,14 @@ __all__ = [
     "Candidate",
     "CandidateStore",
     "Category",
+    "CompletionClient",
     "ConfigurationError",
+    "ExtractionError",
+    "FactExtractor",
     "FirmMemory",
     "FirmMemoryError",
     "InvalidInputError",
+    "LLMFactExtractor",
     "LifecycleError",
     "Memory",
     "MemoryProvider",
@@ -86,6 +99,7 @@ __all__ = [
     "ScopeError",
     "Settings",
     "Source",
+    "SourceDocument",
     "TaxonomyError",
     "UnknownProviderError",
     "evaluate",

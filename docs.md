@@ -114,11 +114,29 @@ fields.
 
 ---
 
-## 5. Lifecycle
+## 5. Ingestion and lifecycle
 
 ```text
-Source ─► Candidate ─► checks ─► human approval ─► Firm Memory ─► provider.insert()
+raw material ─► extract ─► Candidate ─► checks ─► human approval ─► provider.insert()
 ```
+
+**There is no direct ingestion path.** `FirmMemory.ingest()` distils a
+`SourceDocument` into candidates and queues them; it never touches the provider.
+`Mem0Provider.insert` uses `infer=False`, so even the write path does no
+extraction of its own — a canonical memory is already a distilled fact, and
+re-extracting it would summarise a summary and lose the provenance the gate just
+attached.
+
+Extraction is a **platform** concern, not a provider one. The prompt is built
+from the firm's taxonomy and its exclusions, so whoever runs it must speak the
+firm's vocabulary. Asking mem0 to extract would do the opposite of what is
+wanted: its extraction runs inside `add()`, which writes.
+
+The taxonomy is closed at extraction time — a fact the model cannot attribute to
+a type is discarded rather than guessed at, because a mistyped memory is
+unretrievable. Low-confidence candidates are dropped before a reviewer sees
+them, and candidate ids are content-addressed so re-running the same MR updates
+one queue entry instead of adding another.
 
 Candidates wait in a `CandidateStore`, **outside** the provider — an unreviewed
 proposal must never be one status-filter bug away from being recalled. For a
@@ -263,6 +281,67 @@ passed the taxonomy and the gate; re-extracting it would summarise a summary and
 lose the provenance just attached. `infer=True` is opt-in for the one case that
 needs it — reconciling a distilled fact against a near-duplicate already in the
 pool.
+
+---
+
+## 7a. Choosing the LLM, the embedder and the store
+
+### LiteLLM
+
+`litellm` is a registered mem0 LLM provider (`mem0/utils/factory.py`), so
+`FIRM_MEM0_LLM_PROVIDER=litellm` works. Two constraints, both from reading the
+source:
+
+1. **mem0's LiteLLM class ignores `api_key`.** `mem0/llms/litellm.py` forwards
+   only `model`, `messages`, `temperature`, `top_p` and the token limit to
+   `litellm.completion` — never a key or a base URL, even though
+   `BaseLlmConfig` carries them. Credentials must reach it through litellm's own
+   environment variables (`LITELLM_PROXY_API_KEY` + `LITELLM_PROXY_API_BASE`
+   with a `litellm_proxy/...` model, or the native variable for a direct
+   provider).
+2. **There is no litellm embedder.** The embedder list is openai, azure_openai,
+   ollama, huggingface, fastembed, gemini, vertexai, together, lmstudio,
+   langchain, aws_bedrock. Since a LiteLLM proxy is OpenAI-compatible, point the
+   `openai` embedder at it with `openai_base_url` — which is what
+   `FIRM_MEM0_API_KEY` / `FIRM_MEM0_BASE_URL` do. One gateway key then serves
+   both halves.
+
+The platform's own extraction client (`ingestion/llm.py`) *does* pass `api_key`
+and `api_base` explicitly, so it works with a gateway with no environment setup.
+
+### Vector store and hybrid search
+
+mem0 2.x searches hybrid **by default** — there is no flag.
+`_search_vector_store` runs dense search, then `keyword_search`, then entity
+boosts, and fuses them in `mem0/utils/scoring.py`.
+
+| Store | Keyword capability |
+| --- | --- |
+| **pgvector** | Postgres FTS: GIN index on `to_tsvector('simple', payload->>'text_lemmatized')`, ranked by `ts_rank_cd`. Not true BM25, but lexical. |
+| **qdrant** | True BM25 as a named sparse vector alongside the dense one. |
+| elasticsearch / opensearch / mongodb | Native full-text. |
+| chroma / faiss / pinecone | None — mem0 logs a warning and degrades to semantic only. |
+
+pgvector remains the right choice here: it is self-hosted with no egress, which
+the firm's IP constraint requires, and its keyword half is good enough for prose
+memories. Qdrant is the upgrade path if lexical recall on identifiers (error
+codes, tickers, internal acronyms) proves insufficient.
+
+pgvector indexing: `hnsw` (default) or `diskann`, which needs the extension and
+only applies below 2000 dimensions.
+
+### Two scoring gotchas
+
+**The threshold gates the wrong half.** mem0 filters on the *semantic* score
+**before** fusing the keyword score, so its default threshold of `0.1` drops
+exactly what hybrid search exists to catch — an exact identifier match that
+embeds poorly. The provider therefore passes `0.0` and lets the platform's
+`min_score` do the cutting.
+
+**Hybrid scores are compressed.** The combined score is divided by the number of
+signals in play — 2.0 with keyword search, 2.5 with entity boosts — so a strong
+semantic match of 0.8 with no keyword hit arrives as 0.4. `FIRM_MEMORY_MIN_SCORE`
+must be tuned against observed scores, not against cosine-similarity intuition.
 
 ---
 

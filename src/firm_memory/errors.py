@@ -34,6 +34,14 @@ class LifecycleError(FirmMemoryError):
     """An illegal status transition, or an approval that policy forbids."""
 
 
+class ExtractionError(FirmMemoryError):
+    """Distilling candidate facts from raw material failed.
+
+    Never fatal to the caller's task: an ingestion run that extracts nothing
+    should leave the pool untouched, not fail the review that triggered it.
+    """
+
+
 class InvalidInputError(FirmMemoryError):
     """Caller passed unusable content to a boundary method."""
 

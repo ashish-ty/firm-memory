@@ -9,12 +9,20 @@ a migration.
 from __future__ import annotations
 
 from .approval import ApprovalQueue, Candidate
+from .extraction import FactExtractor, LLMFactExtractor, SourceDocument, extract_all
+from .llm import CompletionClient, LiteLLMClient
 from .store import CandidateStore, InMemoryCandidateStore, JsonFileCandidateStore
 
 __all__ = [
     "ApprovalQueue",
     "Candidate",
     "CandidateStore",
+    "CompletionClient",
+    "FactExtractor",
     "InMemoryCandidateStore",
     "JsonFileCandidateStore",
+    "LLMFactExtractor",
+    "LiteLLMClient",
+    "SourceDocument",
+    "extract_all",
 ]

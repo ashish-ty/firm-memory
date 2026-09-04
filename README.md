@@ -41,10 +41,11 @@ or the MCP contract.
 ## Quick start
 
 ```bash
-pip install -e '.[mem0,pgvector,rerank,mcp,dev]'
+pip install -e '.[mem0,pgvector,rerank,mcp,extract,dev]'
 export FIRM_MEM0_PG_DSN='postgresql://mem0:pw@db.internal:5432/mem0'
 export FIRM_MEMORY_DOMAINS='execution,mcx'      # this repo's domains
 export FIRM_MEMORY_CANDIDATES_PATH='.firm-memory/candidates.json'
+export FIRM_MEMORY_EXTRACTION_MODEL='litellm_proxy/gpt-4o-mini'   # enables ingest()
 ```
 
 ```python
@@ -72,6 +73,30 @@ Run the MCP server for agents:
 ```bash
 firm-memory-mcp        # stdio; exposes memory_search / memory_get / memory_propose / memory_correct
 ```
+
+### Ingesting raw material
+
+Nothing is stored directly. Raw material is distilled into candidates, and a
+candidate becomes firm knowledge only when a person approves it:
+
+```python
+from firm_memory import SourceDocument, MemoryScope, Provenance
+
+candidates = memory.ingest(SourceDocument(
+    content=mr_discussion_text,
+    scope=MemoryScope(domains=("execution",), repos=("oms",)),
+    provenance=Provenance(source="merge-request", reference="mr-4821"),
+    kind="merge request discussion",
+))
+
+for candidate in memory.approvals.pending():
+    print(candidate.id, candidate.memory.type, candidate.memory.content)
+
+memory.approvals.approve(candidates[0].id, approver="ashish")   # only now is it retrievable
+```
+
+`ingest()` never writes to the provider. Extracting nothing is a normal and
+frequent outcome — most discussions contain no durable knowledge.
 
 ---
 
@@ -163,10 +188,16 @@ provider itself. That split is what keeps a provider swap a config change.
 | `FIRM_MEMORY_REPO` | *(git remote)* | Override the repo slug |
 | `FIRM_MEMORY_CANDIDATES_PATH` | *(in-process)* | Where proposals wait for a human |
 | `FIRM_MEMORY_AUTO_APPROVE` | `off` | Confidence-based automation |
+| `FIRM_MEMORY_EXTRACTION_MODEL` | — | Model that distils candidates; unset disables `ingest()` |
+| `FIRM_MEMORY_EXTRACTION_API_KEY` | — | Gateway key for extraction |
+| `FIRM_MEMORY_EXTRACTION_API_BASE` | — | Gateway URL for extraction |
 | `FIRM_MEM0_PG_DSN` | **required** | pgvector connection string |
 | `FIRM_MEM0_COLLECTION` | `mem0_firm` | Collection name |
 | `FIRM_MEM0_POOL_OWNER` | `firm` | `user_id` naming the pool |
 | `FIRM_MEM0_RERANK` | `on` | Local cross-encoder reranking |
+| `FIRM_MEM0_LLM_PROVIDER` | `openai` | `litellm` fronts every provider with one key |
+| `FIRM_MEM0_API_KEY` / `_BASE_URL` | — | Gateway for the embedder (OpenAI-compatible) |
+| `FIRM_MEM0_HNSW` / `_DISKANN` | `on` / `off` | pgvector index |
 
 `FIRM_MEM0_REPO`, `FIRM_MEM0_TOP_K`, `FIRM_MEM0_THRESHOLD` and
 `FIRM_MEM0_FIRM_OWNER` are still honoured so an existing deployment does not
@@ -198,6 +229,8 @@ src/firm_memory/
 │   ├── inmemory.py    dependency-free provider for tests and local use
 │   └── mem0/          namespace · filters · mapping · settings · provider
 ├── ingestion/
+│   ├── extraction.py  raw material -> candidates (the only way in)
+│   ├── llm.py         the completion client (LiteLLM by default)
 │   ├── approval.py    the human gate
 │   └── store.py       where candidates wait
 └── mcp/

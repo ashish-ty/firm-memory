@@ -48,6 +48,17 @@ class Mem0Settings:
     reranker_enabled: bool = True
     reranker_provider: str = DEFAULT_RERANKER_PROVIDER
     reranker_model: str = DEFAULT_RERANKER_MODEL
+    #: Credentials. mem0's LiteLLM class ignores ``api_key`` and reads litellm's
+    #: own environment variables instead, so these matter for the OpenAI-shaped
+    #: providers — including an OpenAI-compatible gateway such as a LiteLLM proxy.
+    llm_api_key: str | None = None
+    llm_base_url: str | None = None
+    embedder_api_key: str | None = None
+    embedder_base_url: str | None = None
+    #: pgvector index. HNSW is the sane default; DiskANN needs the extension and
+    #: only applies below 2000 dimensions.
+    hnsw: bool = True
+    diskann: bool = False
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> Mem0Settings:
@@ -79,6 +90,14 @@ class Mem0Settings:
             reranker_enabled=(env.get("FIRM_MEM0_RERANK") or "on").strip().lower() not in _FALSEY,
             reranker_provider=(env.get("FIRM_MEM0_RERANKER_PROVIDER") or DEFAULT_RERANKER_PROVIDER).strip(),
             reranker_model=(env.get("FIRM_MEM0_RERANKER_MODEL") or DEFAULT_RERANKER_MODEL).strip(),
+            llm_api_key=_optional(env, "FIRM_MEM0_LLM_API_KEY"),
+            llm_base_url=_optional(env, "FIRM_MEM0_LLM_BASE_URL"),
+            # One gateway key can serve both halves: FIRM_MEM0_API_KEY/BASE_URL
+            # is the fallback so a LiteLLM proxy needs configuring only once.
+            embedder_api_key=_optional(env, "FIRM_MEM0_EMBEDDER_API_KEY") or _optional(env, "FIRM_MEM0_API_KEY"),
+            embedder_base_url=_optional(env, "FIRM_MEM0_EMBEDDER_BASE_URL") or _optional(env, "FIRM_MEM0_BASE_URL"),
+            hnsw=(env.get("FIRM_MEM0_HNSW") or "on").strip().lower() not in _FALSEY,
+            diskann=(env.get("FIRM_MEM0_DISKANN") or "off").strip().lower() not in _FALSEY,
         )
 
 
@@ -88,6 +107,18 @@ def build_memory_config(settings: Mem0Settings) -> dict:
     Only pgvector's supported keys are emitted — ``PGVectorConfig`` rejects
     extra fields outright.
     """
+    llm_config: dict = {"model": settings.llm_model}
+    if settings.llm_api_key:
+        llm_config["api_key"] = settings.llm_api_key
+    if settings.llm_base_url:
+        llm_config["openai_base_url"] = settings.llm_base_url
+
+    embedder_config: dict = {"model": settings.embedder_model, "embedding_dims": settings.embedding_dims}
+    if settings.embedder_api_key:
+        embedder_config["api_key"] = settings.embedder_api_key
+    if settings.embedder_base_url:
+        embedder_config["openai_base_url"] = settings.embedder_base_url
+
     config: dict = {
         "vector_store": {
             "provider": "pgvector",
@@ -95,15 +126,17 @@ def build_memory_config(settings: Mem0Settings) -> dict:
                 "connection_string": settings.pg_dsn,
                 "collection_name": settings.collection_name,
                 "embedding_model_dims": settings.embedding_dims,
+                "hnsw": settings.hnsw,
+                "diskann": settings.diskann,
             },
         },
         "llm": {
             "provider": settings.llm_provider,
-            "config": {"model": settings.llm_model},
+            "config": llm_config,
         },
         "embedder": {
             "provider": settings.embedder_provider,
-            "config": {"model": settings.embedder_model},
+            "config": embedder_config,
         },
         "custom_instructions": fact_extraction_instructions(),
     }
@@ -115,6 +148,11 @@ def build_memory_config(settings: Mem0Settings) -> dict:
         }
 
     return config
+
+
+def _optional(env: Mapping[str, str], key: str) -> str | None:
+    """Read a setting that is legitimately absent, normalising blanks to ``None``."""
+    return (env.get(key) or "").strip() or None
 
 
 def _positive_int(env: Mapping[str, str], key: str, default: int) -> int:
