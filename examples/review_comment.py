@@ -141,6 +141,9 @@ def configure() -> None:
     # missing, so this only avoids the warning. For real retrieval work:
     #   pip install -e '.[rerank]' && export FIRM_MEM0_RERANK=on
     os.environ.setdefault("FIRM_MEM0_RERANK", "off")
+    # Keep candidates on disk. Extraction costs a model call, so a failure at
+    # the write step should not throw away facts a reviewer has already read.
+    os.environ.setdefault("FIRM_MEMORY_CANDIDATES_PATH", ".firm-memory/candidates.json")
 
 
 def quieten_dependencies() -> None:

@@ -11,11 +11,16 @@ requires-python = ">=3.11"
 # The core package deliberately has no runtime dependencies. A provider brings
 # its own, so a consumer that swaps providers does not keep carrying the old
 # one, and importing firm_memory stays cheap.
-dependencies = []
+dependencies = [
+    "fastembed>=0.8.0",
+    "litellm>=1.99.0",
+]
 
 [project.optional-dependencies]
 # The default provider.
-mem0 = ["mem0ai>=2.0.14"]
+# 2.0.20 is the floor: earlier versions' fastembed embedder returns numpy
+# arrays, which psycopg cannot bind, so writes to pgvector fail.
+mem0 = ["mem0ai>=2.0.20"]
 # Self-hosted store. pgvector is the backend build_memory_config() targets.
 pgvector = ["psycopg[binary,pool]>=3.1"]
 # Local cross-encoder reranking — keeps retrieval quality without leaving the network.
@@ -31,7 +36,7 @@ fastembed = ["fastembed>=0.3"]
 # Everything examples/review_comment.py needs, so the demo is one install
 # rather than four extras a reader has to compose correctly.
 demo = [
-    "mem0ai>=2.0.14",
+    "mem0ai>=2.0.20",
     "psycopg[binary,pool]>=3.1",
     "litellm>=1.50",
     "fastembed>=0.3",
@@ -40,7 +45,7 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=4.1",
     "ruff>=0.6",
-    "mem0ai>=2.0.14",
+    "mem0ai>=2.0.20",
     "psycopg[binary,pool]>=3.1",
 ]
 

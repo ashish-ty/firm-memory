@@ -19,3 +19,6 @@ BRIEF_*.md
 
 # uv writes this for the local environment; not meaningful for a library.
 uv.lock
+
+# Local approval queue written by examples/review_comment.py.
+.firm-memory/

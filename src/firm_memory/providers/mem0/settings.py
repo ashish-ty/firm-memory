@@ -20,6 +20,8 @@ from importlib.util import find_spec
 
 from ...errors import ConfigurationError
 from ...taxonomy import fact_extraction_instructions
+from .embedders import FASTEMBED_PROVIDER
+from .embedders import register as register_fastembed
 from .namespace import DEFAULT_POOL_OWNER
 
 DEFAULT_COLLECTION = "mem0_firm"
@@ -125,6 +127,11 @@ def build_memory_config(settings: Mem0Settings) -> dict:
         llm_config["api_key"] = settings.llm_api_key
     if settings.llm_base_url:
         llm_config["openai_base_url"] = settings.llm_base_url
+
+    if settings.embedder_provider == FASTEMBED_PROVIDER:
+        # mem0's fastembed embedder returns a numpy array, which psycopg cannot
+        # bind. Swap in the corrected subclass before the factory resolves it.
+        register_fastembed()
 
     embedder_config: dict = {"model": settings.embedder_model, "embedding_dims": settings.embedding_dims}
     if settings.embedder_api_key:
