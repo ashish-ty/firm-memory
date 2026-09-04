@@ -113,15 +113,16 @@ against real MRs before committing to either.
 
 ### Try it now
 
-No credentials needed — a canned extractor shows the flow and the gate:
+Point it at one PR review comment and see what it proposes:
 
 ```bash
-python examples/try_extraction.py --mode offline --approve
+export OPENROUTER_API_KEY='sk-or-...'
+export FIRM_MEM0_PG_DSN='postgresql://mem0:pw@localhost:5432/mem0'
+
+python examples/review_comment.py
 ```
 
-Five candidates queued, zero search hits before approval, cited memories after.
-See [`examples/`](examples/) for running it against a real model and comparing
-the two extractors.
+See [`examples/`](examples/) for details.
 
 ---
 
