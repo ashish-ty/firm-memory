@@ -195,5 +195,14 @@ def test_total_failure_is_reported_not_disguised_as_an_empty_result():
         extract_all(LLMFactExtractor(client), [document(), document(content="another source")])
 
 
+def test_total_failure_carries_the_underlying_cause():
+    """Otherwise the operator is told to check three things the provider already named."""
+    client = FakeClient(raises=ExtractionError("AuthenticationError: invalid api key"))
+    with pytest.raises(ExtractionError, match="invalid api key") as raised:
+        extract_all(LLMFactExtractor(client), [document()])
+
+    assert raised.value.__cause__ is not None, "the original error must stay chained"
+
+
 def test_extracting_from_no_documents_is_not_a_failure():
     assert extract_all(LLMFactExtractor(FakeClient()), []) == []

@@ -69,7 +69,7 @@ The script defaults everything else, so it works as-is:
 
 | | Default | Why |
 | --- | --- | --- |
-| LLM | `openrouter/anthropic/claude-3.5-sonnet` via litellm | Your OpenRouter key |
+| LLM | `openrouter/anthropic/claude-haiku-4.5` via litellm | Your OpenRouter key |
 | Embedder | `BAAI/bge-small-en-v1.5` via fastembed (ONNX, local) | **OpenRouter has no embeddings endpoint.** Local also keeps memory content off the network, and fastembed avoids pulling in torch |
 | Dimensions | `384` | Must match the embedding model — pgvector fixes the column width at creation |
 | Reranker | off | It needs `sentence-transformers` (and torch). Turn it on for real retrieval work: `pip install -e '.[rerank]'` and `export FIRM_MEM0_RERANK=on` |

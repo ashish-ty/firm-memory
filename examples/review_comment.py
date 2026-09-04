@@ -31,6 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from firm_memory import FirmMemory, MemoryScope, Provenance, Settings, SourceDocument
+from firm_memory.errors import ExtractionError
 from firm_memory.providers.mem0 import Mem0FactExtractor, Mem0Provider
 
 SAMPLE_COMMENT = """
@@ -124,7 +125,11 @@ def configure() -> None:
         )
 
     os.environ.setdefault("FIRM_MEM0_LLM_PROVIDER", "litellm")
-    os.environ.setdefault("FIRM_MEM0_LLM_MODEL", "openrouter/anthropic/claude-3.5-sonnet")
+    # Model slugs on OpenRouter are retired over time — anthropic/claude-3.5-sonnet
+    # was, which is why a stale default failed with a model-not-found error rather
+    # than anything to do with the pipeline. Check https://openrouter.ai/models
+    # if extraction reports one.
+    os.environ.setdefault("FIRM_MEM0_LLM_MODEL", "openrouter/anthropic/claude-haiku-4.5")
     # fastembed runs the model over ONNX — no torch, and nothing leaves the network.
     os.environ.setdefault("FIRM_MEM0_EMBEDDER_PROVIDER", "fastembed")
     os.environ.setdefault("FIRM_MEM0_EMBEDDER_MODEL", "BAAI/bge-small-en-v1.5")
@@ -147,6 +152,11 @@ def quieten_dependencies() -> None:
     """
     for name in ("psycopg.pool", "httpx", "LiteLLM"):
         logging.getLogger(name).setLevel(logging.CRITICAL)
+    # This script ingests exactly one document and reports a failed extraction
+    # itself, so the library's per-document warning is a duplicate traceback.
+    # It stays on for batch ingestion, where it is the only record of a
+    # document that was skipped.
+    logging.getLogger("firm_memory.ingestion.extraction").setLevel(logging.ERROR)
 
 
 DOCKER_HINT = """Start one with Docker (the image ships pgvector already):
@@ -202,6 +212,18 @@ def _safe_dsn(dsn: str) -> str:
     import re
 
     return re.sub(r"://([^:/@]+):[^@]*@", r"://\1:***@", dsn)
+
+
+def ingest(memory: FirmMemory, comment: str, scope: MemoryScope, args: argparse.Namespace):
+    """Hand the comment to the pipeline as one source document."""
+    return memory.ingest(
+        SourceDocument(
+            content=comment,
+            scope=scope,
+            provenance=Provenance(source="review-comment", reference=args.reference),
+            kind="pull request review comment",
+        )
+    )
 
 
 def read_comment(args: argparse.Namespace) -> str:
@@ -269,15 +291,15 @@ def main() -> None:
         extractor=Mem0FactExtractor(provider),
     ) as memory:
         print("Extracting…")
-        candidates = memory.ingest(
-            SourceDocument(
-                content=comment,
-                scope=scope,
-                provenance=Provenance(source="review-comment", reference=args.reference),
-                kind="pull request review comment",
+        try:
+            candidates = ingest(memory, comment, scope, args)
+        except ExtractionError as exc:
+            sys.exit(
+                f"\nExtraction failed.\n\n  {exc}\n\n"
+                f"Model: {os.environ['FIRM_MEM0_LLM_MODEL']}\n"
+                "If that is an authentication or model-not-found error, check OPENROUTER_API_KEY\n"
+                "and that the model slug exists at https://openrouter.ai/models"
             )
-        )
-
         if not candidates:
             print("\nNo durable facts in this comment. That is a normal outcome —")
             print("most review comments contain nothing that stays true after the task.")

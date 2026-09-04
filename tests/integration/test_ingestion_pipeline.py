@@ -170,7 +170,7 @@ def test_a_provider_without_an_extractor_falls_back_rather_than_refusing_to_star
     from firm_memory.ingestion.extraction import LLMFactExtractor
     from firm_memory.memory import _default_extractor
 
-    settings = Settings(extractor="provider", extraction_model="openrouter/anthropic/claude-3.5-sonnet")
+    settings = Settings(extractor="provider", extraction_model="openrouter/anthropic/claude-haiku-4.5")
     assert isinstance(_default_extractor(settings, InMemoryProvider()), LLMFactExtractor)
 
 

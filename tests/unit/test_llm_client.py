@@ -97,5 +97,5 @@ def test_a_transport_failure_is_wrapped_with_context():
 
 def test_building_a_client_does_not_require_litellm():
     """A deployment that never ingests must not be made to install it."""
-    client = LiteLLMClient("openrouter/anthropic/claude-3.5-sonnet")
+    client = LiteLLMClient("openrouter/anthropic/claude-haiku-4.5")
     assert client is not None

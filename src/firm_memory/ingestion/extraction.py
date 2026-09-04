@@ -191,17 +191,24 @@ def extract_all(
     """
     candidates: list[Memory] = []
     failures = 0
+    last_error: ExtractionError | None = None
 
     for document in documents:
         try:
             candidates.extend(extractor.extract(document))
-        except ExtractionError:
+        except ExtractionError as exc:
             failures += 1
+            last_error = exc
             logger.warning("Extraction failed for a %s; continuing", document.kind, exc_info=True)
 
     if documents and failures == len(documents):
+        # Carry the cause, not just the fact of failure. An earlier version
+        # reported only that everything failed, which told the operator to go
+        # and check the model, the key and the network by hand — when the
+        # provider had already said which of the three it was.
         raise ExtractionError(
-            f"Extraction failed for all {failures} source(s). This is a failure, not an empty result — "
-            "check the model, the API key, and the network."
-        )
+            f"Extraction failed for all {failures} source(s). This is a failure, not an empty "
+            f"result. The last error was:\n\n  {last_error}"
+        ) from last_error
+
     return candidates
