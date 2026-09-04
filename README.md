@@ -111,6 +111,18 @@ mem0's extraction prompt is written for a consumer assistant — its examples ar
 still comes back in that shape is caught by the taxonomy and dropped. Run both
 against real MRs before committing to either.
 
+### Try it now
+
+No credentials needed — a canned extractor shows the flow and the gate:
+
+```bash
+python examples/try_extraction.py --mode offline --approve
+```
+
+Five candidates queued, zero search hits before approval, cited memories after.
+See [`examples/`](examples/) for running it against a real model and comparing
+the two extractors.
+
 ---
 
 ## The five things this package owns
