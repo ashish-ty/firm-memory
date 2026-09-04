@@ -62,7 +62,9 @@ class LiteLLMClient:
         self._api_base = api_base
         self._temperature = temperature
         self._max_tokens = max_tokens
-        self._completion = completion or _litellm_completion()
+        # Resolved on first use, not here: building a FirmMemory must not
+        # require an LLM client that a deployment may never call.
+        self._completion = completion
 
     def complete_json(self, system: str, user: str) -> dict:
         """Ask the model for a JSON object and return it parsed."""
@@ -82,6 +84,9 @@ class LiteLLMClient:
             params["api_key"] = self._api_key
         if self._api_base:
             params["api_base"] = self._api_base
+
+        if self._completion is None:
+            self._completion = _litellm_completion()
 
         try:
             response = self._completion(**params)

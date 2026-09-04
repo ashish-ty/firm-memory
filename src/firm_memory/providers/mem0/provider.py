@@ -27,7 +27,7 @@ from ...models import (
     MemoryTier,
 )
 from ...scope import MemoryScope
-from ...taxonomy import MemoryType
+from ...taxonomy import MemoryType, fact_extraction_instructions
 from ..base import DEFAULT_SEARCH_LIMIT
 from .filters import payload_metadata, search_filters
 from .mapping import to_memory
@@ -95,6 +95,44 @@ class Mem0Provider:
             raise ProviderError(f"Failed to initialise the mem0 backend: {exc}") from exc
 
         return cls(backend, settings=mem0_settings)
+
+    # --- extraction support (read-only) --------------------------------------
+
+    @property
+    def backend(self) -> Any:
+        """The underlying mem0 ``Memory``.
+
+        Exposed for the extractor, which reuses mem0's own prompt and LLM but
+        deliberately stops before mem0 writes anything.
+        """
+        return self._memory
+
+    @property
+    def extraction_instructions(self) -> str:
+        """The firm's taxonomy instructions, as handed to mem0's extractor."""
+        return fact_extraction_instructions()
+
+    def extraction_context(
+        self,
+        scope: MemoryScope,
+        query: str,
+        *,
+        limit: int = 10,
+    ) -> list[tuple[str, str]]:
+        """Return ``(id, text)`` for memories already in the pool near *query*.
+
+        Deduplication context for extraction: shown to the model so it returns
+        only what is genuinely new. Scoped like any other read, so a fact is
+        deduplicated against the pool it would actually join. Failure is not
+        fatal — extraction without context yields duplicates, which the approval
+        queue catches, whereas raising would lose the whole ingestion run.
+        """
+        try:
+            found = self.search(query, scope, limit)
+        except ProviderError:
+            logger.warning("Could not load deduplication context; extracting without it", exc_info=True)
+            return []
+        return [(memory.id or "", memory.content) for memory in found]
 
     # --- MemoryProvider ------------------------------------------------------
 

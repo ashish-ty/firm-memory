@@ -127,10 +127,34 @@ extraction of its own — a canonical memory is already a distilled fact, and
 re-extracting it would summarise a summary and lose the provenance the gate just
 attached.
 
-Extraction is a **platform** concern, not a provider one. The prompt is built
-from the firm's taxonomy and its exclusions, so whoever runs it must speak the
-firm's vocabulary. Asking mem0 to extract would do the opposite of what is
-wanted: its extraction runs inside `add()`, which writes.
+### Splitting mem0's `add()` in half
+
+mem0's real value on the ingestion side is its extractor: one LLM call that
+reads the input *together with the memories already in the pool* and returns
+only what is genuinely new. That dedup-aware behaviour is the hard part to
+reproduce, so the default extractor reuses it rather than replacing it.
+
+`Memory._add_to_vector_store` runs seven phases. Phases 0-2 — gather context,
+retrieve existing memories, one LLM extraction call — are **read-only**. Phases
+3-6 embed and persist. `Mem0FactExtractor` performs 0-2 with mem0's own
+`ADDITIVE_EXTRACTION_PROMPT` and mem0's configured LLM, and stops. Nothing is
+embedded, nothing is written.
+
+Two things mem0's extractor does not give us:
+
+- **A type.** Its schema is `{"memory": [{"text": ...}]}` with no category, and
+  a dozen few-shot examples anchor it, so custom instructions cannot reliably
+  add a field. Typing is a second batched call against the firm taxonomy — one
+  call for all facts, since extraction already costs a round trip.
+- **Engineering framing.** `ADDITIVE_EXTRACTION_PROMPT` is written for a
+  consumer assistant ("User has a dog named Max"). The firm's
+  `custom_instructions` are injected and steer it, but the examples still pull
+  toward personal-profile facts. The taxonomy is the guard: the classifier is
+  given an explicit `"none"` category, and anything typed `none` is dropped.
+
+`LLMFactExtractor` remains available (`FIRM_MEMORY_EXTRACTOR=llm`) with a prompt
+built for engineering memory from the start. Which extracts better on real MRs
+is an empirical question; both are wired so it can be answered.
 
 The taxonomy is closed at extraction time — a fact the model cannot attribute to
 a type is discarded rather than guessed at, because a mistyped memory is

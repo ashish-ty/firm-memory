@@ -68,3 +68,13 @@ def test_the_approval_policy_follows_the_settings():
     settings = Settings.from_env({"FIRM_MEMORY_AUTO_APPROVE": "on", "FIRM_MEMORY_AUTO_APPROVE_THRESHOLD": "0.9"})
     assert settings.approval_policy.auto_approve_enabled is True
     assert settings.approval_policy.auto_approve_threshold == 0.9
+
+
+def test_the_provider_extractor_is_the_default():
+    """mem0's dedup-aware extraction is the reason to run a memory framework."""
+    assert Settings.from_env({}).extractor == "provider"
+
+
+def test_the_extractor_is_selectable():
+    assert Settings.from_env({"FIRM_MEMORY_EXTRACTOR": "llm"}).extractor == "llm"
+    assert Settings.from_env({"FIRM_MEMORY_EXTRACTOR": "none"}).extractor == "none"

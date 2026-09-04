@@ -59,13 +59,27 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-def _default_extractor(settings: Settings) -> FactExtractor | None:
-    """Build the extractor when a model is configured, otherwise none.
+def _default_extractor(settings: Settings, provider: MemoryProvider) -> FactExtractor | None:
+    """Build the configured extractor, or none.
 
     Absent configuration is not an error: a deployment that only searches and
     curates by hand never ingests, and should not be made to install an LLM
     client to start up.
     """
+    if settings.extractor == "none":
+        return None
+
+    if settings.extractor == "provider":
+        extractor = _provider_extractor(provider)
+        if extractor is not None:
+            return extractor
+        # Fall through: a provider without its own extractor is a reason to use
+        # the platform's, not a reason to refuse to start.
+        logger.info(
+            "Provider %r has no extractor; falling back to the platform's",
+            getattr(provider, "name", type(provider).__name__),
+        )
+
     if not settings.extraction_model:
         return None
 
@@ -78,6 +92,16 @@ def _default_extractor(settings: Settings) -> FactExtractor | None:
             api_base=settings.extraction_api_base,
         )
     )
+
+
+def _provider_extractor(provider: MemoryProvider) -> FactExtractor | None:
+    """Return the provider's own extractor, if it has one."""
+    if not hasattr(provider, "backend"):
+        return None
+
+    from .providers.mem0.extraction import Mem0FactExtractor
+
+    return Mem0FactExtractor(provider)
 
 
 def _default_candidate_store(settings: Settings) -> CandidateStore:
@@ -165,11 +189,12 @@ class FirmMemory:
             resolve_repo_slug(cwd, env=settings.env),
             domains=settings.default_domains,
         )
+        selected = provider or get_provider(settings)
         return cls(
-            provider or get_provider(settings),
+            selected,
             settings=settings,
             scope=scope,
-            extractor=extractor if extractor is not None else _default_extractor(settings),
+            extractor=extractor if extractor is not None else _default_extractor(settings, selected),
         )
 
     # --- properties ----------------------------------------------------------

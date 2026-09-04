@@ -26,6 +26,9 @@ from .errors import ConfigurationError
 from .lifecycle import DEFAULT_AUTO_APPROVE_THRESHOLD, ApprovalPolicy
 
 DEFAULT_PROVIDER = "mem0"
+#: Reuse the provider's own extractor by default. It is the reason to run a
+#: memory framework at all, and it deduplicates against what is already stored.
+DEFAULT_EXTRACTOR = "provider"
 DEFAULT_LIMIT = 5
 DEFAULT_MIN_SCORE = 0.3
 #: Memory is best effort and must never hold up a review (HLD §11). Two seconds
@@ -58,9 +61,15 @@ class Settings:
     #: be a path: the agent that proposes and the engineer who approves are
     #: different processes, hours apart.
     candidates_path: str | None = None
-    #: The model that distils raw material into candidates. Unset means the
-    #: platform has no ingestion path at all, which is a valid deployment:
-    #: search and human-curated memory work without it.
+    #: Which extractor distils raw material into candidates. ``"provider"``
+    #: reuses the memory provider's own extractor — for mem0 that means its
+    #: dedup-aware extraction, minus its write. ``"llm"`` uses the platform's
+    #: own prompt, built for engineering memory from the start. ``"none"``
+    #: disables ingestion, which is a valid deployment: search and hand-curated
+    #: memory work without it.
+    extractor: str = DEFAULT_EXTRACTOR
+    #: The model the ``"llm"`` extractor calls. Unused by ``"provider"``, which
+    #: goes through the provider's configured LLM.
     extraction_model: str | None = None
     extraction_api_key: str | None = None
     extraction_api_base: str | None = None
@@ -87,6 +96,7 @@ class Settings:
             ),
             default_domains=_slug_list(env.get("FIRM_MEMORY_DOMAINS")),
             candidates_path=(env.get("FIRM_MEMORY_CANDIDATES_PATH") or "").strip() or None,
+            extractor=(env.get("FIRM_MEMORY_EXTRACTOR") or DEFAULT_EXTRACTOR).strip().lower(),
             extraction_model=(env.get("FIRM_MEMORY_EXTRACTION_MODEL") or "").strip() or None,
             extraction_api_key=(env.get("FIRM_MEMORY_EXTRACTION_API_KEY") or "").strip() or None,
             extraction_api_base=(env.get("FIRM_MEMORY_EXTRACTION_API_BASE") or "").strip() or None,

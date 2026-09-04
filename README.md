@@ -98,6 +98,19 @@ memory.approvals.approve(candidates[0].id, approver="ashish")   # only now is it
 `ingest()` never writes to the provider. Extracting nothing is a normal and
 frequent outcome — most discussions contain no durable knowledge.
 
+**Two extractors**, chosen with `FIRM_MEMORY_EXTRACTOR`:
+
+| Value | What runs |
+| --- | --- |
+| `provider` *(default)* | mem0's own extractor, including its deduplication against memories already in the pool — but only its read-only phases, so it never writes. A second batched call types each fact against the firm taxonomy. |
+| `llm` | The platform's own prompt, written for engineering memory from the start and returning type and confidence directly. One call. |
+| `none` | Ingestion disabled. Search and hand-curation still work. |
+
+mem0's extraction prompt is written for a consumer assistant — its examples are
+"User has a dog named Max". The firm's instructions steer it, but anything that
+still comes back in that shape is caught by the taxonomy and dropped. Run both
+against real MRs before committing to either.
+
 ---
 
 ## The five things this package owns
@@ -188,7 +201,8 @@ provider itself. That split is what keeps a provider swap a config change.
 | `FIRM_MEMORY_REPO` | *(git remote)* | Override the repo slug |
 | `FIRM_MEMORY_CANDIDATES_PATH` | *(in-process)* | Where proposals wait for a human |
 | `FIRM_MEMORY_AUTO_APPROVE` | `off` | Confidence-based automation |
-| `FIRM_MEMORY_EXTRACTION_MODEL` | — | Model that distils candidates; unset disables `ingest()` |
+| `FIRM_MEMORY_EXTRACTOR` | `provider` | `provider` (mem0's extractor), `llm`, or `none` |
+| `FIRM_MEMORY_EXTRACTION_MODEL` | — | Model for the `llm` extractor |
 | `FIRM_MEMORY_EXTRACTION_API_KEY` | — | Gateway key for extraction |
 | `FIRM_MEMORY_EXTRACTION_API_BASE` | — | Gateway URL for extraction |
 | `FIRM_MEM0_PG_DSN` | **required** | pgvector connection string |

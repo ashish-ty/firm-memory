@@ -149,3 +149,32 @@ def test_search_and_curation_work_without_any_extractor_configured():
 def test_from_env_builds_no_extractor_when_no_model_is_configured():
     settings = Settings.from_env({})
     assert settings.extraction_model is None
+
+
+# --- extractor selection -----------------------------------------------------
+
+
+def test_the_provider_extractor_is_chosen_when_the_provider_has_one():
+    """mem0 gets to do the extraction; approval still gates the write."""
+    from firm_memory.memory import _default_extractor
+    from firm_memory.providers.mem0.extraction import Mem0FactExtractor
+
+    class ProviderWithExtractor(InMemoryProvider):
+        backend = object()
+
+    extractor = _default_extractor(Settings(extractor="provider"), ProviderWithExtractor())
+    assert isinstance(extractor, Mem0FactExtractor)
+
+
+def test_a_provider_without_an_extractor_falls_back_rather_than_refusing_to_start():
+    from firm_memory.ingestion.extraction import LLMFactExtractor
+    from firm_memory.memory import _default_extractor
+
+    settings = Settings(extractor="provider", extraction_model="openrouter/anthropic/claude-3.5-sonnet")
+    assert isinstance(_default_extractor(settings, InMemoryProvider()), LLMFactExtractor)
+
+
+def test_extraction_can_be_disabled_entirely():
+    from firm_memory.memory import _default_extractor
+
+    assert _default_extractor(Settings(extractor="none"), InMemoryProvider()) is None
