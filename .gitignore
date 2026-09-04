@@ -14,3 +14,5 @@ build/
 # Internal planning documents — kept locally, deliberately out of the repo.
 PLAN_*.md
 BRIEF_*.md
+
+.vscode/

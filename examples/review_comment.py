@@ -22,6 +22,7 @@ Run:
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import select
 import sys
@@ -45,6 +46,59 @@ rejection later.
 """
 
 
+#: What this script needs at runtime, and the package that provides each.
+#: mem0 imports its LLM and embedder modules eagerly, so a missing one surfaces
+#: deep inside a factory rather than at startup — hence checking up front.
+REQUIREMENTS = (
+    ("mem0", "mem0ai", "the memory provider"),
+    ("psycopg", "psycopg[binary,pool]", "the pgvector store"),
+    ("litellm", "litellm", "the OpenRouter LLM"),
+    ("fastembed", "fastembed", "local embeddings"),
+)
+
+
+def check_dependencies() -> None:
+    """Report every missing package at once, with the command that fixes it.
+
+    Reporting them one at a time means four failed runs, each with a traceback
+    from somewhere inside mem0's factories.
+    """
+    from importlib.util import find_spec
+
+    missing = [(pkg, why) for module, pkg, why in REQUIREMENTS if find_spec(module) is None]
+    if not missing:
+        return
+
+    lines = [f"Missing {len(missing)} dependency/dependencies for this script:\n"]
+    lines += [f"  - {pkg:<24} ({why})" for pkg, why in missing]
+    lines.append("\nInstall them all with:\n")
+    lines.append("  pip install -e '.[demo]'\n")
+    lines.append(f"Running as: {sys.executable}")
+    lines.append("If that is not the interpreter you expected, activate your venv")
+    lines.append("(or repoint your editor's interpreter) and run again.")
+    sys.exit("\n".join(lines))
+
+
+def load_env_file() -> None:
+    """Load ``.env`` from the repo root, if there is one.
+
+    So credentials can live in a gitignored file instead of being typed on every
+    run — and, importantly, instead of being hardcoded into this script, which
+    is committed to a public repository. Real values already in the environment
+    win, so a shell export still overrides the file.
+    """
+    env_file = Path(__file__).resolve().parents[1] / ".env"
+    if not env_file.exists():
+        return
+
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
 def configure() -> None:
     """Point mem0 at OpenRouter for the LLM and a local model for embeddings.
 
@@ -52,20 +106,63 @@ def configure() -> None:
     OpenRouter has no embeddings endpoint, so embeddings run locally — which
     also keeps the memory content off the network.
     """
+    load_env_file()
+
     if not os.environ.get("OPENROUTER_API_KEY"):
-        sys.exit("Set OPENROUTER_API_KEY first:\n  export OPENROUTER_API_KEY='sk-or-...'")
+        sys.exit(
+            "OPENROUTER_API_KEY is not set. Either export it:\n"
+            "  export OPENROUTER_API_KEY='sk-or-...'\n"
+            "or put it in a .env file at the repo root (already gitignored):\n"
+            "  OPENROUTER_API_KEY=sk-or-...\n\n"
+            "Do not hardcode it in this file — this repository is public."
+        )
     if not os.environ.get("FIRM_MEM0_PG_DSN"):
         sys.exit(
-            "Set FIRM_MEM0_PG_DSN first:\n"
-            "  export FIRM_MEM0_PG_DSN='postgresql://mem0:pw@localhost:5432/mem0'"
+            "FIRM_MEM0_PG_DSN is not set. Either export it:\n"
+            "  export FIRM_MEM0_PG_DSN='postgresql://mem0:pw@localhost:5432/mem0'\n"
+            "or add it to your .env file."
         )
 
     os.environ.setdefault("FIRM_MEM0_LLM_PROVIDER", "litellm")
     os.environ.setdefault("FIRM_MEM0_LLM_MODEL", "openrouter/anthropic/claude-3.5-sonnet")
-    os.environ.setdefault("FIRM_MEM0_EMBEDDER_PROVIDER", "huggingface")
+    # fastembed runs the model over ONNX — no torch, and nothing leaves the network.
+    os.environ.setdefault("FIRM_MEM0_EMBEDDER_PROVIDER", "fastembed")
     os.environ.setdefault("FIRM_MEM0_EMBEDDER_MODEL", "BAAI/bge-small-en-v1.5")
     # Must match the model: pgvector fixes the column width at creation.
     os.environ.setdefault("FIRM_MEM0_EMBEDDING_DIMS", "384")
+    # Cross-encoder reranking is a retrieval-quality feature and pulls in torch
+    # via sentence-transformers, which this script does not need to demonstrate
+    # extraction and approval. Turn it on for real retrieval work:
+    #   pip install -e '.[rerank]' && export FIRM_MEM0_RERANK=on
+    os.environ.setdefault("FIRM_MEM0_RERANK", "off")
+
+
+def quieten_dependencies() -> None:
+    """Turn down libraries that narrate their retries.
+
+    psycopg's pool logs every failed connection attempt, twice per host, so an
+    unreachable database buries the actual message. The check below reports it
+    once, clearly.
+    """
+    for name in ("psycopg.pool", "httpx", "LiteLLM"):
+        logging.getLogger(name).setLevel(logging.CRITICAL)
+
+
+def check_database(provider: Mem0Provider, scope: MemoryScope) -> None:
+    """Fail fast, and legibly, when the store is unreachable.
+
+    Without this the run continues: deduplication context comes back empty, the
+    write fails only at approval, and the operator sees a wall of pool retries
+    with no summary.
+    """
+    try:
+        provider.search("connectivity check", scope, 1)
+    except Exception as exc:
+        sys.exit(
+            f"Could not reach the vector store.\n\n  {type(exc).__name__}: {str(exc).splitlines()[0]}\n\n"
+            f"FIRM_MEM0_PG_DSN is {os.environ['FIRM_MEM0_PG_DSN']!r}.\n"
+            "Check the database is running and that pgvector is installed in it."
+        )
 
 
 def read_comment(args: argparse.Namespace) -> str:
@@ -115,12 +212,16 @@ def main() -> None:
     parser.add_argument("--yes", action="store_true", help="approve everything without asking")
     args = parser.parse_args()
 
+    check_dependencies()
     configure()
     comment = read_comment(args)
+
+    quieten_dependencies()
 
     settings = Settings.from_env(os.environ)
     provider = Mem0Provider.from_settings(settings)
     scope = MemoryScope(domains=(args.domain,), repos=(args.repo,))
+    check_database(provider, scope)
 
     with FirmMemory(
         provider,
@@ -139,7 +240,8 @@ def main() -> None:
         )
 
         if not candidates:
-            print("\nNo durable facts in this comment. That is a normal outcome.")
+            print("\nNo durable facts in this comment. That is a normal outcome —")
+            print("most review comments contain nothing that stays true after the task.")
             return
 
         print(f"\n{len(candidates)} candidate fact(s) — none stored yet:\n")

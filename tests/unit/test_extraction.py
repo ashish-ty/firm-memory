@@ -186,3 +186,14 @@ def test_a_batch_survives_one_document_failing():
 
     documents = [document(content="first source"), document(content="second source")]
     assert len(extract_all(LLMFactExtractor(FlakyClient()), documents)) == 1
+
+
+def test_total_failure_is_reported_not_disguised_as_an_empty_result():
+    """A dead model must not look like a week with no durable knowledge."""
+    client = FakeClient(raises=ExtractionError("gateway timeout"))
+    with pytest.raises(ExtractionError, match="all 2 source"):
+        extract_all(LLMFactExtractor(client), [document(), document(content="another source")])
+
+
+def test_extracting_from_no_documents_is_not_a_failure():
+    assert extract_all(LLMFactExtractor(FakeClient()), []) == []

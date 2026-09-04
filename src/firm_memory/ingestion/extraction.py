@@ -184,12 +184,24 @@ def extract_all(
     """Extract from several documents, skipping the ones that fail.
 
     A batch ingest of fifty MRs must not be lost because one of them upset the
-    model.
+    model. But *total* failure is not an empty result: if every document failed,
+    the honest answer is that extraction is broken, not that the sources held no
+    durable knowledge. Reporting the latter is how a dead model or an expired
+    key gets mistaken for a quiet week.
     """
     candidates: list[Memory] = []
+    failures = 0
+
     for document in documents:
         try:
             candidates.extend(extractor.extract(document))
         except ExtractionError:
+            failures += 1
             logger.warning("Extraction failed for a %s; continuing", document.kind, exc_info=True)
+
+    if documents and failures == len(documents):
+        raise ExtractionError(
+            f"Extraction failed for all {failures} source(s). This is a failure, not an empty result — "
+            "check the model, the API key, and the network."
+        )
     return candidates

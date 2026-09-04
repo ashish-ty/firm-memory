@@ -25,6 +25,17 @@ mcp = ["mcp>=1.2"]
 # Fact extraction for the ingestion pipeline. LiteLLM fronts every provider
 # through one key, so changing model does not change this package.
 extract = ["litellm>=1.50"]
+# Local embeddings over ONNX. Much lighter than sentence-transformers (no
+# torch), and keeps memory content off the network.
+fastembed = ["fastembed>=0.3"]
+# Everything examples/review_comment.py needs, so the demo is one install
+# rather than four extras a reader has to compose correctly.
+demo = [
+    "mem0ai>=2.0.14",
+    "psycopg[binary,pool]>=3.1",
+    "litellm>=1.50",
+    "fastembed>=0.3",
+]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=4.1",

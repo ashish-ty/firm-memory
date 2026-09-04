@@ -116,8 +116,8 @@ against real MRs before committing to either.
 Point it at one PR review comment and see what it proposes:
 
 ```bash
-export OPENROUTER_API_KEY='sk-or-...'
-export FIRM_MEM0_PG_DSN='postgresql://mem0:pw@localhost:5432/mem0'
+pip install -e '.[demo]'
+cp .env.example .env          # then fill in the two credentials
 
 python examples/review_comment.py
 ```

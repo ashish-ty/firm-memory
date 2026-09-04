@@ -18,7 +18,7 @@ import logging
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
-from ...errors import ProviderError
+from ...errors import ConfigurationError, ProviderError
 from ...models import (
     DEFAULT_SEARCH_STATUSES,
     DEFAULT_SEARCH_TIERS,
@@ -85,12 +85,21 @@ class Mem0Provider:
         if memory_factory is None:
 
             def memory_factory(config: dict) -> Any:
-                from mem0 import Memory as Mem0Memory
+                try:
+                    from mem0 import Memory as Mem0Memory
+                except ImportError as exc:
+                    raise ConfigurationError(
+                        "The mem0 provider requires the mem0ai package. Install it with: "
+                        "pip install 'firm-memory[mem0]'"
+                    ) from exc
 
                 return Mem0Memory.from_config(config)
 
         try:
             backend = memory_factory(build_memory_config(mem0_settings))
+        except ConfigurationError:
+            # A missing dependency is the operator's to fix, and already says how.
+            raise
         except Exception as exc:
             raise ProviderError(f"Failed to initialise the mem0 backend: {exc}") from exc
 
