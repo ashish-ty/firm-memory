@@ -89,8 +89,7 @@ class Mem0Provider:
                     from mem0 import Memory as Mem0Memory
                 except ImportError as exc:
                     raise ConfigurationError(
-                        "The mem0 provider requires the mem0ai package. Install it with: "
-                        "pip install 'firm-memory[mem0]'"
+                        "The mem0 provider requires the mem0ai package. Install it with: uv sync"
                     ) from exc
 
                 return Mem0Memory.from_config(config)

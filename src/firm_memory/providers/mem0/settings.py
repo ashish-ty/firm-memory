@@ -188,7 +188,7 @@ def _reranker_available(provider: str) -> bool:
     logger.warning(
         "Reranking is enabled but %r is not installed, so it is disabled for this session. "
         "Retrieval still works, ranked by the vector store alone. Install it with: "
-        "pip install 'firm-memory[rerank]'",
+        "uv sync --extra rerank",
         required,
     )
     return False

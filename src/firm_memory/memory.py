@@ -235,7 +235,7 @@ class FirmMemory:
         if self._extractor is None:
             raise ConfigurationError(
                 "Ingestion requires an extractor. Pass one to FirmMemory(extractor=...), "
-                "or configure FIRM_MEMORY_EXTRACTION_MODEL and install: pip install 'firm-memory[extract]'"
+                "or configure FIRM_MEMORY_EXTRACTION_MODEL. If dependencies are missing, run: uv sync"
             )
         if not documents:
             return []

@@ -116,7 +116,7 @@ against real MRs before committing to either.
 Point it at one PR review comment and see what it proposes:
 
 ```bash
-pip install -e '.[demo]'
+uv sync
 cp .env.example .env          # then fill in the two credentials
 
 python examples/review_comment.py

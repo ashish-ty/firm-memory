@@ -123,6 +123,6 @@ def _litellm_completion() -> Any:
         from litellm import completion
     except ImportError as exc:  # pragma: no cover - depends on the optional extra
         raise ConfigurationError(
-            "Fact extraction requires the 'litellm' package. Install it with: pip install 'firm-memory[extract]'"
+            "Fact extraction requires the 'litellm' package. Install it with: uv sync"
         ) from exc
     return completion

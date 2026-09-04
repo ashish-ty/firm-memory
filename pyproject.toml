@@ -8,45 +8,35 @@ version = "1.0.0"
 description = "Firm-wide engineering memory: a thin, firm-owned contract over a replaceable memory provider"
 readme = "README.md"
 requires-python = ">=3.11"
-# The core package deliberately has no runtime dependencies. A provider brings
-# its own, so a consumer that swaps providers does not keep carrying the old
-# one, and importing firm_memory stays cheap.
+# Everything needed to run the platform and examples/review_comment.py, so a
+# bare `uv sync` produces a working environment. These were previously extras a
+# reader had to compose correctly, which was a reliable source of failures that
+# only surfaced deep inside a mem0 factory.
+#
+# mem0ai floor is 2.0.20: earlier versions' fastembed embedder returns numpy
+# arrays, which psycopg cannot bind, so writes to pgvector fail at insert time.
 dependencies = [
-    "fastembed>=0.8.0",
-    "litellm>=1.99.0",
+    "mem0ai>=2.0.20",              # the memory provider
+    "psycopg[binary,pool]>=3.1",   # the pgvector store
+    "litellm>=1.99",               # one gateway key for any LLM (OpenRouter, proxies)
+    "fastembed>=0.8",              # local ONNX embeddings; no torch, no egress
 ]
 
 [project.optional-dependencies]
-# The default provider.
-# 2.0.20 is the floor: earlier versions' fastembed embedder returns numpy
-# arrays, which psycopg cannot bind, so writes to pgvector fail.
-mem0 = ["mem0ai>=2.0.20"]
-# Self-hosted store. pgvector is the backend build_memory_config() targets.
-pgvector = ["psycopg[binary,pool]>=3.1"]
-# Local cross-encoder reranking — keeps retrieval quality without leaving the network.
+# Genuinely optional, and heavy or niche enough not to install by default.
+#
+# Cross-encoder reranking improves retrieval quality but pulls in torch via
+# sentence-transformers. The platform runs without it and says so once.
 rerank = ["sentence-transformers>=2.2.0"]
-# The agent-facing MCP server.
+# Only needed to serve the agent-facing MCP server.
 mcp = ["mcp>=1.2"]
-# Fact extraction for the ingestion pipeline. LiteLLM fronts every provider
-# through one key, so changing model does not change this package.
-extract = ["litellm>=1.50"]
-# Local embeddings over ONNX. Much lighter than sentence-transformers (no
-# torch), and keeps memory content off the network.
-fastembed = ["fastembed>=0.3"]
-# Everything examples/review_comment.py needs, so the demo is one install
-# rather than four extras a reader has to compose correctly.
-demo = [
-    "mem0ai>=2.0.20",
-    "psycopg[binary,pool]>=3.1",
-    "litellm>=1.50",
-    "fastembed>=0.3",
-]
+
+[dependency-groups]
+# Installed by `uv sync` automatically, so the tests run straight after a clone.
 dev = [
     "pytest>=8.0",
     "pytest-cov>=4.1",
     "ruff>=0.6",
-    "mem0ai>=2.0.20",
-    "psycopg[binary,pool]>=3.1",
 ]
 
 [project.scripts]

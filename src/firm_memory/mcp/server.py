@@ -7,7 +7,7 @@ to register the four tools, hand their arguments to
 :class:`~firm_memory.mcp.tools.MemoryTools`, and return the result. Any other
 internal agent uses the same interface.
 
-The MCP SDK is an optional dependency (``pip install 'firm-memory[mcp]'``) and
+The MCP SDK is an optional dependency (``uv sync --extra mcp``) and
 is imported lazily, so a consumer embedding the Python API directly does not
 carry it.
 """
@@ -106,7 +106,7 @@ def _fast_mcp(name: str) -> Any:
         from mcp.server.fastmcp import FastMCP
     except ImportError as exc:  # pragma: no cover - depends on the optional extra
         raise ConfigurationError(
-            "The MCP server requires the 'mcp' package. Install it with: pip install 'firm-memory[mcp]'"
+            "The MCP server requires the 'mcp' package. Install it with: uv sync --extra mcp"
         ) from exc
     return FastMCP(name)
 

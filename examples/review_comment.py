@@ -73,7 +73,7 @@ def check_dependencies() -> None:
     lines = [f"Missing {len(missing)} dependency/dependencies for this script:\n"]
     lines += [f"  - {pkg:<24} ({why})" for pkg, why in missing]
     lines.append("\nInstall them all with:\n")
-    lines.append("  pip install -e '.[demo]'\n")
+    lines.append("  uv sync\n")
     lines.append(f"Running as: {sys.executable}")
     lines.append("If that is not the interpreter you expected, activate your venv")
     lines.append("(or repoint your editor's interpreter) and run again.")
@@ -139,7 +139,7 @@ def configure() -> None:
     # via sentence-transformers, which this script does not need to demonstrate
     # extraction and approval. The library degrades on its own if the package is
     # missing, so this only avoids the warning. For real retrieval work:
-    #   pip install -e '.[rerank]' && export FIRM_MEM0_RERANK=on
+    #   uv sync --extra rerank && export FIRM_MEM0_RERANK=on
     os.environ.setdefault("FIRM_MEM0_RERANK", "off")
     # Keep candidates on disk. Extraction costs a model call, so a failure at
     # the write step should not throw away facts a reviewer has already read.

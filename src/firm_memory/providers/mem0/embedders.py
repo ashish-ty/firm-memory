@@ -41,8 +41,7 @@ def _base_class() -> Any:
         from mem0.embeddings.fastembed import FastEmbedEmbedding
     except ImportError as exc:  # pragma: no cover - depends on the optional extra
         raise ConfigurationError(
-            "The fastembed embedder requires the fastembed package. Install it with: "
-            "pip install 'firm-memory[fastembed]'"
+            "The fastembed embedder requires the fastembed package. Install it with: uv sync"
         ) from exc
     return FastEmbedEmbedding
 

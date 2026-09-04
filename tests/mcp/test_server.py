@@ -19,7 +19,7 @@ def test_the_sdk_is_optional_and_its_absence_says_how_to_fix_it():
     try:
         import mcp.server.fastmcp  # noqa: F401
     except ImportError:
-        with pytest.raises(ConfigurationError, match="pip install"):
+        with pytest.raises(ConfigurationError, match="uv sync"):
             server.build_server()
     else:  # pragma: no cover - only when the extra is installed
         pytest.skip("mcp extra is installed, so absence cannot be exercised")

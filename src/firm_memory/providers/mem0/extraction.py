@@ -266,6 +266,6 @@ def _import_prompts() -> Any:
         from mem0.configs import prompts
     except ImportError as exc:  # pragma: no cover - depends on the optional extra
         raise ExtractionError(
-            "Extracting with mem0 requires the mem0ai package. Install it with: pip install 'firm-memory[mem0]'"
+            "Extracting with mem0 requires the mem0ai package. Install it with: uv sync"
         ) from exc
     return prompts
