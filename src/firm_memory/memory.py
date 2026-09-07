@@ -37,6 +37,7 @@ from .config import Settings
 from .errors import ConfigurationError, InvalidInputError, ProviderError
 from .ingestion.approval import ApprovalQueue, Candidate
 from .ingestion.extraction import FactExtractor, LLMFactExtractor, SourceDocument, extract_all
+from .ingestion.selection import candidate_store_from_url
 from .ingestion.store import CandidateStore, InMemoryCandidateStore, JsonFileCandidateStore
 from .lifecycle import ApprovalDecision, MemoryStatus, evaluate
 from .lifecycle import dispute as dispute_memory
@@ -105,7 +106,15 @@ def _provider_extractor(provider: MemoryProvider) -> FactExtractor | None:
 
 
 def _default_candidate_store(settings: Settings) -> CandidateStore:
-    """File-backed when a path is configured, in-process otherwise."""
+    """The queue that spans the widest gap the deployment actually has.
+
+    A configured queue URL wins, because it is the only setting that can reach
+    across machines — the bot proposing from CI and the engineer approving later
+    are not on the same host. A file when only a path is given, for a single
+    host. A dict otherwise, for tests and for one long-lived process.
+    """
+    if settings.candidates_url:
+        return candidate_store_from_url(settings.candidates_url)
     if settings.candidates_path:
         return JsonFileCandidateStore(settings.candidates_path)
     return InMemoryCandidateStore()

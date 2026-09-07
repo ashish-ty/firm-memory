@@ -8,12 +8,15 @@ a migration.
 
 from __future__ import annotations
 
+from .amendment import Amendment
 from .approval import ApprovalQueue, Candidate
 from .extraction import FactExtractor, LLMFactExtractor, SourceDocument, extract_all
 from .llm import CompletionClient, LiteLLMClient
+from .postgres_store import PostgresCandidateStore
 from .store import CandidateStore, InMemoryCandidateStore, JsonFileCandidateStore
 
 __all__ = [
+    "Amendment",
     "ApprovalQueue",
     "Candidate",
     "CandidateStore",
@@ -23,6 +26,7 @@ __all__ = [
     "JsonFileCandidateStore",
     "LLMFactExtractor",
     "LiteLLMClient",
+    "PostgresCandidateStore",
     "SourceDocument",
     "extract_all",
 ]

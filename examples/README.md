@@ -1,3 +1,18 @@
+# Examples
+
+| | What it shows |
+| --- | --- |
+| [`MCP_ROUND_TRIP.md`](MCP_ROUND_TRIP.md) | **Setting this up on a new machine**, step by step: agent ingests over MCP, human approves in the review UI. |
+| `ingest_via_mcp.py` | The agent half — real MCP over stdio, one MR discussion in, candidates out. |
+| `run_review_ui.py` | The human half — the review UI, against the same queue. |
+| `review_comment.py` | One PR review comment end to end, in-process and interactive. |
+
+All four share the credentials and database below. The two MCP scripts need
+`uv sync --extra mcp` rather than a bare `uv sync`, because they spawn the
+MCP server as a subprocess.
+
+---
+
 # `review_comment.py`
 
 Takes one PR review comment, extracts the durable facts from it, and asks you

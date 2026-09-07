@@ -1,12 +1,18 @@
 """The agent-facing tool surface.
 
-Four tools (HLD §8), each a thin translation between JSON and the Firm Memory
-API:
+Five tools, each a thin translation between JSON and the Firm Memory API:
 
 ``memory_search``   find knowledge relevant to what the agent is doing
 ``memory_get``      fetch one memory by id, for citation and verification
-``memory_propose``  put forward a candidate; never creates an active memory
+``memory_ingest``   hand over raw material to be distilled into candidates
+``memory_propose``  put forward one already-distilled candidate
 ``memory_correct``  report a memory as stale or wrong
+
+``memory_ingest`` and ``memory_propose`` are the same gate reached from two
+distances. An agent that has *read* an MR discussion should hand over the
+discussion and let the platform's extractor and taxonomy do the judging;
+an agent that has already concluded something specific proposes that. Neither
+writes: both produce candidates a person must endorse.
 
 **Nothing here raises.** A tool that throws takes the agent's whole turn with
 it, and memory is meant to be optional. Failures come back as an ``error`` key
@@ -22,13 +28,18 @@ import logging
 from collections.abc import Sequence
 
 from ..errors import FirmMemoryError
+from ..ingestion.extraction import SourceDocument
 from ..memory import FirmMemory
 from ..models import Memory, MemoryTier
-from ..provenance import Source
+from ..provenance import Provenance, Source
 from ..scope import MemoryScope
 from ..taxonomy import CODING_CATEGORIES
 
 logger = logging.getLogger(__name__)
+
+#: What kind of material is being ingested, when the caller does not say. The
+#: kind steers the model far more than any prompt wording does.
+DEFAULT_SOURCE_KIND = "engineering discussion"
 
 SEARCH_DESCRIPTION = (
     "Search the firm's engineering memory for why the code is the way it is: architecture "
@@ -43,6 +54,17 @@ GET_DESCRIPTION = (
     "Fetch one memory by its canonical id, for citing it in a review comment or verifying a "
     "claim before you act on it. Returns superseded and disputed memories too, so a citation "
     "can always be resolved."
+)
+
+INGEST_DESCRIPTION = (
+    "Hand raw engineering material to the firm's memory to be distilled — a merge request "
+    "discussion, an incident write-up, a design thread, an interview transcript. This does NOT "
+    "store the material and does NOT create an active memory: the text itself is never kept, "
+    "only the durable facts extracted from it, and each of those is queued for a human to "
+    "endorse. Extracting nothing is a normal and frequent outcome — most discussions contain no "
+    "durable knowledge. Prefer this over memory_propose when you have the source material rather "
+    "than an already-formed conclusion, because the extractor applies the firm's taxonomy and its "
+    "exclusions for you."
 )
 
 PROPOSE_DESCRIPTION = (
@@ -114,6 +136,60 @@ class MemoryTools:
         if memory is None:
             return {"found": False, "memory": None}
         return {"found": True, "memory": memory.to_dict()}
+
+    # --- memory_ingest -------------------------------------------------------
+
+    def memory_ingest(
+        self,
+        content: str,
+        *,
+        kind: str = DEFAULT_SOURCE_KIND,
+        repos: Sequence[str] | None = None,
+        domains: Sequence[str] | None = None,
+        firm: bool = False,
+        reference: str | None = None,
+        author: str | None = None,
+        evidence: str | None = None,
+        source: str = Source.DOCUMENT,
+        task: str | None = None,
+        tier: str = MemoryTier.DURABLE.value,
+    ) -> dict:
+        """Distil raw material into candidates awaiting human review."""
+        try:
+            document = SourceDocument(
+                content=content,
+                scope=self._write_scope(repos=repos, domains=domains, firm=firm),
+                provenance=Provenance(
+                    source=source,
+                    reference=reference,
+                    author=author,
+                    evidence=evidence,
+                ),
+                kind=kind or DEFAULT_SOURCE_KIND,
+                tier=MemoryTier(tier),
+                task=task,
+            )
+            candidates = self._memory.ingest(document)
+        except ValueError as exc:
+            return _error(exc)
+        except FirmMemoryError as exc:
+            return _error(exc)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.exception("memory_ingest failed")
+            return _error(exc)
+
+        return {
+            "count": len(candidates),
+            "candidates": [candidate.to_dict() for candidate in candidates],
+            # Said plainly because an agent that reads "0 candidates" as a
+            # failure will retry, and retrying extraction on a discussion that
+            # genuinely holds no durable knowledge just costs tokens.
+            "note": (
+                "Nothing is stored yet. Each candidate is queued for a human to endorse in the "
+                "review UI. A count of 0 means the material held no durable knowledge, which is "
+                "normal — do not retry."
+            ),
+        }
 
     # --- memory_propose ------------------------------------------------------
 
@@ -232,6 +308,7 @@ def _error(exc: Exception) -> dict:
 TOOL_DESCRIPTIONS: dict[str, str] = {
     "memory_search": SEARCH_DESCRIPTION,
     "memory_get": GET_DESCRIPTION,
+    "memory_ingest": INGEST_DESCRIPTION,
     "memory_propose": PROPOSE_DESCRIPTION,
     "memory_correct": CORRECT_DESCRIPTION,
 }

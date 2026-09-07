@@ -16,6 +16,7 @@ different thing from removing knowledge the firm already had.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from hashlib import blake2b
@@ -25,7 +26,10 @@ from ..lifecycle import ApprovalPolicy, evaluate
 from ..lifecycle import approve as approve_memory
 from ..lifecycle import reject as reject_memory
 from ..models import Memory
+from .amendment import Amendment
 from .store import CandidateStore, InMemoryCandidateStore
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,11 +91,24 @@ class ApprovalQueue:
         for identifier, memory in self._store.items():
             yield Candidate(identifier, memory, evaluate(memory, self._policy).reason)
 
-    def approve(self, identifier: str, *, approver: str, confidence: float | None = None) -> Memory:
+    def approve(
+        self,
+        identifier: str,
+        *,
+        approver: str,
+        confidence: float | None = None,
+        amendment: Amendment | None = None,
+    ) -> Memory:
         """Endorse a candidate and write it to the provider.
 
         An approver is required. Approval is the moment a fact becomes firm
         knowledge, and an unattributable one cannot be revisited later.
+
+        *amendment* lets the reviewer correct the candidate as they endorse it —
+        the wording, the type, the scope. It is applied in the same call rather
+        than as a separate edit step because the candidate is claimed from the
+        queue first: two reviewers acting on the same candidate cannot both win,
+        and neither can approve a version the other has already changed.
         """
         if not (approver or "").strip():
             raise LifecycleError("Approval requires an approver; firm knowledge must be attributable")
@@ -100,7 +117,34 @@ class ApprovalQueue:
         if memory is None:
             raise LifecycleError(f"No candidate with id {identifier!r} is awaiting approval")
 
-        return self._commit(approve_memory(memory, approver=approver, confidence=confidence))
+        try:
+            endorsed = amendment.apply(memory, editor=approver) if amendment is not None else memory
+            return self._commit(approve_memory(endorsed, approver=approver, confidence=confidence))
+        except Exception:
+            # The claim already removed the candidate, so *every* failure after
+            # this point has to put it back — an amendment the taxonomy refuses
+            # just as much as a provider outage. Otherwise a reviewer's mistyped
+            # edit silently destroys the candidate it was meant to improve.
+            #
+            # Restored as proposed, not as amended: the edit was never committed
+            # either, and re-queueing a version nobody endorsed would quietly
+            # rewrite what the extractor actually said.
+            try:
+                self._store.add(identifier, memory)
+            except Exception:
+                # The restore failed too, so this candidate is now in neither
+                # the queue nor the pool and nothing can recover it. Its content
+                # goes to the log: an operator re-proposing by hand is a bad
+                # outcome, but it beats the fact being gone without a trace.
+                logger.exception(
+                    "Lost candidate %s after a failed approval by %s. Its content was: %s",
+                    identifier,
+                    approver,
+                    memory.content,
+                )
+            # The original failure, not the rollback's — it is the one that
+            # tells the reviewer whether to retry or fix their amendment.
+            raise
 
     def reject(self, identifier: str, *, reviewer: str, reason: str | None = None) -> Memory:
         """Turn a candidate down, removing it from the queue."""

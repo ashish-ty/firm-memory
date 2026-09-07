@@ -26,8 +26,14 @@ def store(memory, **overrides):
 # --- surface -----------------------------------------------------------------
 
 
-def test_the_v1_tool_surface_is_exactly_the_four_designed_tools():
-    assert set(TOOL_DESCRIPTIONS) == {"memory_search", "memory_get", "memory_propose", "memory_correct"}
+def test_the_tool_surface_is_exactly_the_designed_tools():
+    assert set(TOOL_DESCRIPTIONS) == {
+        "memory_search",
+        "memory_get",
+        "memory_ingest",
+        "memory_propose",
+        "memory_correct",
+    }
 
 
 def test_the_search_description_tells_the_agent_the_codebase_wins():
@@ -183,3 +189,132 @@ def test_correct_requires_a_reason(tools, memory):
 
 def test_correcting_an_unknown_memory_reports_absence(tools):
     assert tools.memory_correct("no-such-id", "stale") == {"found": False, "memory": None}
+
+
+# --- memory_ingest -----------------------------------------------------------
+
+
+class StubExtractor:
+    """Returns a fixed set of candidates, and records what it was asked to read."""
+
+    def __init__(self, candidates=(), error=None):
+        self._candidates = list(candidates)
+        self._error = error
+        self.documents = []
+
+    def extract(self, document):
+        self.documents.append(document)
+        if self._error is not None:
+            raise self._error
+        return [
+            make_memory(content=content, type=MemoryType.BUSINESS_RULE, scope=document.scope)
+            for content in self._candidates
+        ]
+
+
+@pytest.fixture
+def ingesting(memory):
+    """Tools over a memory whose extractor is a stub, so no model is called."""
+    memory._extractor = StubExtractor([RULE])
+    return MemoryTools(memory), memory._extractor
+
+
+def test_the_ingest_description_says_the_material_is_not_stored():
+    description = TOOL_DESCRIPTIONS["memory_ingest"]
+    assert "does NOT store the material" in description
+    assert "does NOT create an active memory" in description
+
+
+def test_the_ingest_description_tells_the_agent_that_nothing_extracted_is_normal():
+    """An agent that reads 0 as failure will retry and just burn tokens."""
+    assert "normal and frequent outcome" in TOOL_DESCRIPTIONS["memory_ingest"]
+
+
+def test_ingesting_raw_material_queues_candidates(ingesting):
+    tools, _ = ingesting
+    result = tools.memory_ingest("A long merge request discussion about order cutoffs.")
+
+    assert result["count"] == 1
+    [candidate] = result["candidates"]
+    assert candidate["memory"]["content"] == RULE
+    assert candidate["candidate_id"]
+
+
+def test_ingested_material_is_not_searchable_until_a_human_approves(ingesting, memory):
+    tools, _ = ingesting
+    tools.memory_ingest("A long merge request discussion about order cutoffs.")
+
+    assert memory.search("when do cash strategies stop sending") == []
+
+
+def test_an_ingested_candidate_can_then_be_approved_and_becomes_retrievable(ingesting, memory):
+    tools, _ = ingesting
+    [candidate] = tools.memory_ingest("A discussion about order cutoffs.")["candidates"]
+
+    memory.approvals.approve(candidate["candidate_id"], approver="ashish")
+
+    assert [hit.content for hit in memory.search("when do cash strategies stop sending")] == [RULE]
+
+
+def test_the_kind_of_material_reaches_the_extractor(ingesting):
+    """It steers the model far more than prompt wording, so it must not be dropped."""
+    tools, extractor = ingesting
+    tools.memory_ingest("...", kind="incident review")
+
+    assert extractor.documents[0].kind == "incident review"
+
+
+def test_provenance_reaches_the_extractor_so_a_fact_can_be_traced_back(ingesting):
+    tools, extractor = ingesting
+    tools.memory_ingest("...", reference="mr-4821", evidence="docs/cutoffs.md", source="merge-request")
+
+    provenance = extractor.documents[0].provenance
+    assert provenance.reference == "mr-4821"
+    assert provenance.evidence == "docs/cutoffs.md"
+    assert provenance.source == "merge-request"
+
+
+def test_material_can_be_scoped_across_repos(ingesting):
+    tools, extractor = ingesting
+    tools.memory_ingest("...", repos=["oms", "gateway"], domains=["execution"])
+
+    assert extractor.documents[0].scope == MemoryScope(domains=("execution",), repos=("oms", "gateway"))
+
+
+def test_unscoped_material_inherits_this_checkout(ingesting):
+    tools, extractor = ingesting
+    tools.memory_ingest("...")
+
+    assert REPO in extractor.documents[0].scope.repos
+
+
+def test_extracting_nothing_is_a_normal_answer_not_an_error(memory):
+    memory._extractor = StubExtractor([])
+    result = MemoryTools(memory).memory_ingest("A discussion that settled nothing.")
+
+    assert result["count"] == 0
+    assert result["candidates"] == []
+    assert "error" not in result
+
+
+def test_empty_material_is_reported_rather_than_thrown(ingesting):
+    tools, _ = ingesting
+    assert "error" in tools.memory_ingest("   ")
+
+
+def test_an_extraction_failure_reaches_the_agent_as_a_readable_error(memory):
+    from firm_memory.errors import ExtractionError
+
+    memory._extractor = StubExtractor(error=ExtractionError("the model returned no 'facts' list"))
+    result = MemoryTools(memory).memory_ingest("A discussion.")
+
+    assert "facts" in result["error"]
+    assert result["error_type"] == "ExtractionError"
+
+
+def test_ingestion_disabled_is_reported_rather_than_thrown(memory):
+    """A deployment that only searches and hand-curates is valid."""
+    memory._extractor = None
+    result = MemoryTools(memory).memory_ingest("A discussion.")
+
+    assert result["error_type"] == "ConfigurationError"

@@ -1,0 +1,686 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- No CDN, no web font, no analytics. Candidates are unreviewed statements
+     about the firm's trading systems; a review page that talks to third
+     parties while showing them would undo the no-egress deployment. -->
+<title>Firm Memory review</title>
+<style>
+  :root {
+    color-scheme: light dark;
+
+    --bg:        #f4f5f7;
+    --bg-accent: #eceef2;
+    --panel:     #ffffff;
+    --ink:       #0f1419;
+    --ink-soft:  #4a5560;
+    --ink-faint: #7b8794;
+    --line:      #e0e4e9;
+    --line-soft: #eef0f3;
+
+    --accent:      #2f6feb;
+    --accent-ink:  #ffffff;
+    --ok:          #10793f;
+    --ok-soft:     #e8f5ec;
+    --no:          #c02a1b;
+    --no-soft:     #fdecea;
+    --warn:        #8a5a00;
+    --warn-soft:   #fdf3e0;
+
+    --shadow: 0 1px 2px rgba(15, 20, 25, .05), 0 4px 12px rgba(15, 20, 25, .05);
+    --shadow-lift: 0 2px 4px rgba(15, 20, 25, .06), 0 12px 28px rgba(15, 20, 25, .10);
+    --radius: 12px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:        #0c0f14;
+      --bg-accent: #11151c;
+      --panel:     #161b23;
+      --ink:       #e8edf3;
+      --ink-soft:  #a3aeba;
+      --ink-faint: #737f8c;
+      --line:      #262d38;
+      --line-soft: #1d232c;
+
+      --accent:      #5b9bff;
+      --accent-ink:  #07101f;
+      --ok:          #46c46f;
+      --ok-soft:     #13291b;
+      --no:          #ff6b5e;
+      --no-soft:     #2c1614;
+      --warn:        #e0a642;
+      --warn-soft:   #2a2113;
+
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 12px rgba(0, 0, 0, .3);
+      --shadow-lift: 0 2px 4px rgba(0, 0, 0, .45), 0 12px 28px rgba(0, 0, 0, .45);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.6 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* --- header ------------------------------------------------------------ */
+
+  header {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 0 24px; height: 60px;
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    backdrop-filter: saturate(180%) blur(12px);
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .mark {
+    width: 26px; height: 26px; border-radius: 8px; flex: none;
+    background: linear-gradient(140deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #9b5bff));
+    display: grid; place-items: center;
+    color: #fff; font-size: 13px; font-weight: 800; letter-spacing: -.04em;
+  }
+  h1 { font-size: 15px; margin: 0; font-weight: 640; letter-spacing: -.012em; white-space: nowrap; }
+  .scope-line { font-size: 12.5px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+  .grow { flex: 1 1 auto; }
+
+  .who {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 12px 5px 6px; border-radius: 999px;
+    background: var(--bg-accent); border: 1px solid var(--line);
+    font-size: 13px; font-weight: 550;
+  }
+  .avatar {
+    width: 22px; height: 22px; border-radius: 999px; flex: none;
+    background: var(--accent); color: var(--accent-ink);
+    display: grid; place-items: center; font-size: 11px; font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  /* --- controls ---------------------------------------------------------- */
+
+  button {
+    font: inherit; color: inherit; cursor: pointer;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 7px 14px; font-weight: 560;
+    transition: background .13s ease, border-color .13s ease, transform .08s ease;
+  }
+  button:hover:not(:disabled) { border-color: var(--ink-faint); }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--ok); border-color: var(--ok); color: #fff; }
+  button.primary:hover:not(:disabled) { filter: brightness(1.08); border-color: var(--ok); }
+  button.danger { color: var(--no); }
+  button.danger:hover:not(:disabled) { background: var(--no-soft); border-color: var(--no); }
+  button.ghost { background: none; border-color: transparent; color: var(--ink-soft); }
+  button.ghost:hover:not(:disabled) { background: var(--bg-accent); border-color: var(--line); }
+  button.tiny { padding: 4px 10px; font-size: 12.5px; }
+
+  input, select, textarea {
+    font: inherit; color: inherit; width: 100%;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 11px;
+    transition: border-color .13s ease, box-shadow .13s ease;
+  }
+  input:focus, select:focus, textarea:focus, button:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  button:focus-visible { border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 92px; line-height: 1.55; }
+
+  /* --- layout ------------------------------------------------------------ */
+
+  main { max-width: 880px; margin: 0 auto; padding: 28px 24px 96px; }
+
+  .queue-head {
+    display: flex; align-items: baseline; gap: 12px;
+    margin: 0 4px 18px; flex-wrap: wrap;
+  }
+  .queue-head h2 { margin: 0; font-size: 22px; font-weight: 660; letter-spacing: -.02em; }
+  .queue-head .sub { color: var(--ink-faint); font-size: 13.5px; }
+
+  /* A reason every candidate shares is policy — said once, quietly. */
+  .policy {
+    margin: -8px 4px 20px; font-size: 12.5px; color: var(--ink-faint);
+    padding-left: 11px; border-left: 2px solid var(--line);
+  }
+
+  /* --- candidate card ---------------------------------------------------- */
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin-bottom: 16px;
+    overflow: hidden;
+    transition: box-shadow .16s ease, opacity .2s ease, transform .2s ease;
+  }
+  .card:hover { box-shadow: var(--shadow-lift); }
+  .card.busy { opacity: .5; pointer-events: none; }
+  .card.leaving { opacity: 0; transform: translateY(-6px) scale(.99); }
+
+  .card-body { padding: 20px 22px 0; }
+
+  .type-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 10px; border-radius: 999px;
+    font-size: 11.5px; font-weight: 650; letter-spacing: .02em;
+    text-transform: uppercase;
+    background: var(--bg-accent); color: var(--ink-soft);
+    border: 1px solid var(--line);
+  }
+  .badge::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+  /* The categories most expensive to get wrong read hottest. */
+  .badge.stakes-high { color: var(--no);     background: var(--no-soft);   border-color: color-mix(in srgb, var(--no) 30%, transparent); }
+  .badge.stakes-mid  { color: var(--warn);   background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+  .badge.stakes-low  { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
+                       border-color: color-mix(in srgb, var(--accent) 28%, transparent); }
+
+  .confidence { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-faint); }
+  .meter { width: 52px; height: 5px; border-radius: 999px; background: var(--line); overflow: hidden; }
+  .meter i { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+
+  .content {
+    font-size: 16.5px; line-height: 1.55; margin: 0 0 16px;
+    letter-spacing: -.008em; white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+
+  .facts { display: flex; gap: 8px 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-faint); }
+  .fact { display: inline-flex; gap: 6px; align-items: baseline; overflow-wrap: anywhere; }
+  .fact b { color: var(--ink-soft); font-weight: 600; }
+
+  .why {
+    display: flex; gap: 8px; align-items: flex-start;
+    margin: 14px 0 0; padding: 9px 12px; border-radius: 8px;
+    background: var(--warn-soft); color: var(--warn);
+    font-size: 12.5px; line-height: 1.5;
+  }
+  .why svg { flex: none; margin-top: 2px; }
+
+  .actions {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    padding: 16px 22px; margin-top: 18px;
+    border-top: 1px solid var(--line-soft);
+    background: color-mix(in srgb, var(--bg-accent) 55%, transparent);
+  }
+  .hint { font-size: 12px; color: var(--ink-faint); margin-left: auto; }
+  kbd {
+    font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--panel); border: 1px solid var(--line);
+    border-bottom-width: 2px; border-radius: 5px; padding: 1px 5px; color: var(--ink-soft);
+  }
+
+  /* --- edit panel -------------------------------------------------------- */
+
+  .edit { padding: 4px 22px 20px; border-top: 1px solid var(--line-soft); background: var(--bg-accent); }
+  .edit-title { font-size: 12px; font-weight: 650; text-transform: uppercase;
+                letter-spacing: .05em; color: var(--ink-faint); margin: 16px 0 12px; }
+  .field { margin-bottom: 14px; }
+  .field > label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-soft); margin-bottom: 5px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 190px; }
+  .checks { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .checks label { display: flex; gap: 8px; align-items: center; font-size: 13.5px; font-weight: 550; }
+  .checks input[type=checkbox] { width: auto; accent-color: var(--accent); }
+  .checks .note { font-size: 12.5px; color: var(--ink-faint); font-weight: 400; }
+
+  /* --- gate, banners, empty ---------------------------------------------- */
+
+  .gate {
+    max-width: 400px; margin: 12vh auto 0;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 16px; box-shadow: var(--shadow-lift); padding: 32px;
+  }
+  .gate .mark { width: 40px; height: 40px; border-radius: 12px; font-size: 18px; margin-bottom: 18px; }
+  .gate h2 { margin: 0 0 6px; font-size: 19px; font-weight: 650; letter-spacing: -.02em; }
+  .gate p { margin: 0 0 20px; color: var(--ink-faint); font-size: 13.5px; line-height: 1.55; }
+  .gate button { width: 100%; margin-top: 4px; }
+
+  .banner {
+    display: flex; gap: 10px; align-items: flex-start;
+    border-radius: 10px; padding: 12px 15px; margin-bottom: 18px;
+    font-size: 13.5px; line-height: 1.5; border: 1px solid transparent;
+  }
+  .banner.error { background: var(--no-soft); color: var(--no); border-color: color-mix(in srgb, var(--no) 28%, transparent); }
+  .banner.ok    { background: var(--ok-soft); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 28%, transparent); }
+
+  .empty { text-align: center; padding: 72px 24px; color: var(--ink-faint); }
+  .empty .mark { width: 44px; height: 44px; border-radius: 14px; font-size: 19px; margin: 0 auto 18px; opacity: .5; }
+  .empty h3 { margin: 0 0 6px; font-size: 17px; font-weight: 620; color: var(--ink-soft); }
+  .empty p { margin: 0; font-size: 13.5px; max-width: 380px; margin-inline: auto; line-height: 1.6; }
+
+  .skeleton { height: 132px; border-radius: var(--radius); background: var(--panel);
+              border: 1px solid var(--line); margin-bottom: 16px; animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+  @media (max-width: 620px) {
+    header { height: auto; padding: 12px 16px; gap: 10px; }
+    .scope-line { width: 100%; order: 3; }
+    main { padding: 20px 16px 72px; }
+    .hint { display: none; }
+  }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="mark">FM</div>
+    <h1>Firm Memory review</h1>
+  </div>
+  <span class="scope-line" id="scope" title="The scope this service reads and writes under"></span>
+  <span class="grow"></span>
+  <span class="who" id="who" hidden>
+    <span class="avatar" id="avatar"></span><span id="whoName"></span>
+  </span>
+  <button class="ghost tiny" id="refresh" hidden>Refresh</button>
+  <button class="ghost tiny" id="signout" hidden>Sign out</button>
+</header>
+
+<main>
+  <div id="banner" hidden></div>
+
+  <!-- The token gate. The page carries no data; everything behind it does. -->
+  <section class="gate" id="gate" hidden>
+    <div class="mark">FM</div>
+    <h2>Firm Memory review</h2>
+    <p>
+      Your review token identifies you. Every fact you approve is recorded
+      against the name it was issued to.
+    </p>
+    <div class="field">
+      <label for="token">Review token</label>
+      <input id="token" type="password" placeholder="••••••••••••••••" autocomplete="current-password" spellcheck="false">
+    </div>
+    <button class="primary" id="unlock">Open the queue</button>
+    <p style="margin:16px 0 0; font-size:12.5px">Kept for this browser tab only, never written to disk.</p>
+  </section>
+
+  <section id="queue" hidden>
+    <div class="queue-head">
+      <h2 id="queueTitle">Awaiting review</h2>
+      <span class="sub" id="queueSub"></span>
+    </div>
+    <p class="policy" id="policy" hidden></p>
+    <div id="cards"></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+
+// sessionStorage: gone when the tab closes, never shared across origins, and
+// never in a URL where it would land in a proxy log.
+const KEY_TOKEN = "firm-memory-review-token";
+
+const el = (id) => document.getElementById(id);
+const gate = el("gate"), queueEl = el("queue"), cardsEl = el("cards"), banner = el("banner");
+
+let types = [];
+let reviewer = "";
+let decided = 0;
+
+/** Which categories are most expensive to get wrong, so the eye goes there. */
+const STAKES = {
+  business_rules: "stakes-high", production_issues: "stakes-high",
+  architecture_decisions: "stakes-mid", coding_conventions: "stakes-mid",
+  anti_patterns: "stakes-mid", dependency_decisions: "stakes-mid",
+};
+
+// --- plumbing ---------------------------------------------------------------
+
+const token = () => sessionStorage.getItem(KEY_TOKEN) || "";
+
+function say(message, kind = "error") {
+  banner.replaceChildren(document.createTextNode(message));
+  banner.className = "banner " + kind;
+  banner.hidden = false;
+  if (kind === "ok") setTimeout(() => { banner.hidden = true; }, 3600);
+}
+
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: {
+      "Authorization": "Bearer " + token(),
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+    },
+  });
+
+  if (response.status === 401) {
+    sessionStorage.removeItem(KEY_TOKEN);
+    showGate();
+    throw new Error("That token was not accepted.");
+  }
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.detail || `Request failed (${response.status})`);
+  return body;
+}
+
+// --- rendering --------------------------------------------------------------
+
+function scopeText(scope) {
+  const parts = scope.firm ? ["firm"] : [];
+  (scope.domains || []).forEach((d) => parts.push("domain:" + d));
+  (scope.repos || []).forEach((r) => parts.push("repo:" + r));
+  return parts.join("  ·  ");
+}
+
+function fact(label, value) {
+  if (value === null || value === undefined || value === "") return null;
+  const node = document.createElement("span");
+  node.className = "fact";
+  const strong = document.createElement("b");
+  strong.textContent = label;
+  node.append(strong, document.createTextNode(String(value)));
+  return node;
+}
+
+function typeOptions(selected) {
+  return types.map((t) => {
+    const option = document.createElement("option");
+    option.value = t.type;
+    option.textContent = t.type.replace(/_/g, " ");
+    option.selected = t.type === selected;
+    option.title = t.description || "";
+    return option;
+  });
+}
+
+function warnIcon() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", "13"); svg.setAttribute("height", "13");
+  svg.setAttribute("viewBox", "0 0 16 16"); svg.setAttribute("fill", "currentColor");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", "M8 1.5 15 14H1L8 1.5Zm0 4.2a.7.7 0 0 0-.7.75l.2 3a.5.5 0 0 0 1 0l.2-3A.7.7 0 0 0 8 5.7Zm0 5.3a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z");
+  svg.append(path);
+  return svg;
+}
+
+/** One candidate, with its edit form folded away until asked for. */
+function card(candidate, sharedReason) {
+  const memory = candidate.memory;
+  const node = document.createElement("article");
+  node.className = "card";
+  node.dataset.id = candidate.candidate_id;
+
+  const body = document.createElement("div");
+  body.className = "card-body";
+
+  const typeRow = document.createElement("div");
+  typeRow.className = "type-row";
+  const badge = document.createElement("span");
+  badge.className = "badge " + (STAKES[memory.type] || "stakes-low");
+  badge.textContent = memory.type.replace(/_/g, " ");
+  const conf = document.createElement("span");
+  conf.className = "confidence";
+  const meter = document.createElement("span");
+  meter.className = "meter";
+  const bar = document.createElement("i");
+  bar.style.width = `${Math.round(Number(memory.confidence) * 100)}%`;
+  meter.append(bar);
+  conf.append(meter, document.createTextNode(Number(memory.confidence).toFixed(2)));
+  typeRow.append(badge, conf);
+
+  const content = document.createElement("p");
+  content.className = "content";
+  content.textContent = memory.content;   // textContent, never innerHTML: candidate text is untrusted.
+
+  const facts = document.createElement("div");
+  facts.className = "facts";
+  [
+    fact("scope", scopeText(memory.scope) || "—"),
+    fact("from", memory.provenance.source),
+    fact("ref", memory.provenance.reference),
+    fact("evidence", memory.provenance.evidence),
+  ].filter(Boolean).forEach((f) => facts.append(f));
+
+  body.append(typeRow, content, facts);
+
+  // Only when this candidate waits for its own reason. A reason every
+  // candidate shares is policy, not information about this one, and repeating
+  // it down the page trains the eye to skip the box that sometimes matters.
+  if (candidate.reason && candidate.reason !== sharedReason) {
+    const why = document.createElement("p");
+    why.className = "why";
+    why.append(warnIcon(), document.createTextNode(candidate.reason));
+    body.append(why);
+  }
+
+  // --- the edit form, hidden until the reviewer wants it ---
+  const edit = document.createElement("div");
+  edit.className = "edit";
+  edit.hidden = true;
+  edit.innerHTML = `
+    <p class="edit-title">Correct it before approving</p>
+    <div class="field">
+      <label>Content</label>
+      <textarea data-f="content"></textarea>
+    </div>
+    <div class="row">
+      <div class="field"><label>Type</label><select data-f="type"></select></div>
+      <div class="field"><label>Confidence</label>
+        <input data-f="confidence" type="number" min="0" max="1" step="0.05"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>Domains &mdash; comma separated</label><input data-f="domains" spellcheck="false"></div>
+      <div class="field"><label>Repos &mdash; comma separated</label><input data-f="repos" spellcheck="false"></div>
+    </div>
+    <div class="field checks">
+      <label><input type="checkbox" data-f="firm"> Applies firm-wide</label>
+      <span class="note">A firm-wide claim always needs a person &mdash; that is you.</span>
+    </div>`;
+  edit.querySelector('[data-f="content"]').value = memory.content;
+  edit.querySelector('[data-f="confidence"]').value = memory.confidence;
+  edit.querySelector('[data-f="domains"]').value = (memory.scope.domains || []).join(", ");
+  edit.querySelector('[data-f="repos"]').value = (memory.scope.repos || []).join(", ");
+  edit.querySelector('[data-f="firm"]').checked = !!memory.scope.firm;
+  edit.querySelector('[data-f="type"]').append(...typeOptions(memory.type));
+
+  const actions = document.createElement("div");
+  actions.className = "actions";
+
+  const approve = document.createElement("button");
+  approve.className = "primary";
+  approve.textContent = "Approve";
+  approve.onclick = () => decide(node, "approve", edit.hidden ? null : readEdit(edit, memory));
+
+  const editToggle = document.createElement("button");
+  editToggle.textContent = "Edit first";
+  editToggle.onclick = () => {
+    edit.hidden = !edit.hidden;
+    editToggle.textContent = edit.hidden ? "Edit first" : "Discard edits";
+    approve.textContent = edit.hidden ? "Approve" : "Approve edited";
+    if (!edit.hidden) edit.querySelector('[data-f="content"]').focus();
+  };
+
+  const reject = document.createElement("button");
+  reject.className = "danger";
+  reject.textContent = "Reject";
+  reject.onclick = () => {
+    const reason = prompt("Why is this not firm knowledge?\n(Recorded, so the same fact is not re-proposed forever.)");
+    if (reason === null) return;
+    decide(node, "reject", null, reason);
+  };
+
+  const hint = document.createElement("span");
+  hint.className = "hint";
+  hint.innerHTML = `<kbd>A</kbd> approve &nbsp;<kbd>E</kbd> edit &nbsp;<kbd>R</kbd> reject`;
+
+  actions.append(approve, editToggle, reject, hint);
+  node.append(body, actions, edit);
+  node._keys = { a: approve, e: editToggle, r: reject };
+  return node;
+}
+
+/** Read the edit form, sending only the fields the reviewer actually changed. */
+function readEdit(edit, memory) {
+  const value = (f) => edit.querySelector(`[data-f="${f}"]`).value.trim();
+  const list = (f) => value(f).split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+
+  const amendment = {};
+  if (value("content") && value("content") !== memory.content) amendment.content = value("content");
+  if (value("type") !== memory.type) amendment.type = value("type");
+
+  const confidence = parseFloat(value("confidence"));
+  if (!Number.isNaN(confidence) && confidence !== memory.confidence) amendment.confidence = confidence;
+
+  const scope = {
+    firm: edit.querySelector('[data-f="firm"]').checked,
+    domains: list("domains"),
+    repos: list("repos"),
+  };
+  const same = scope.firm === !!memory.scope.firm
+    && scope.domains.join() === (memory.scope.domains || []).join()
+    && scope.repos.join() === (memory.scope.repos || []).join();
+  if (!same) amendment.scope = scope;
+
+  return Object.keys(amendment).length ? amendment : null;
+}
+
+// --- actions ----------------------------------------------------------------
+
+async function decide(node, action, amendment, reason) {
+  const body = action === "approve"
+    ? (amendment ? { amendment } : {})
+    : (reason ? { reason } : {});
+
+  node.classList.add("busy");
+  try {
+    const result = await api(`/api/candidates/${encodeURIComponent(node.dataset.id)}/${action}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    node.classList.add("leaving");
+    setTimeout(() => { node.remove(); retitle(); }, 200);
+    decided += 1;
+    say(
+      action === "approve"
+        ? (result.amended
+            ? `Approved with your edits — recorded as ${reviewer}.`
+            : `Approved — recorded as ${reviewer}.`)
+        : "Rejected. It will not be proposed again unchanged.",
+      "ok",
+    );
+  } catch (error) {
+    node.classList.remove("busy");
+    say(error.message);
+  }
+}
+
+function retitle() {
+  const left = cardsEl.querySelectorAll(".card").length;
+  el("queueSub").textContent = left
+    ? `${left} waiting${decided ? ` · ${decided} decided this session` : ""}`
+    : (decided ? `${decided} decided this session` : "");
+  if (!left) renderEmpty();
+}
+
+function renderEmpty() {
+  const empty = document.createElement("div");
+  empty.className = "empty";
+  const mark = document.createElement("div");
+  mark.className = "mark"; mark.textContent = "✓";
+  const heading = document.createElement("h3");
+  heading.textContent = decided ? "Queue cleared" : "Nothing waiting";
+  const note = document.createElement("p");
+  note.textContent = "Extracting nothing is a normal outcome — most discussions hold no durable knowledge.";
+  empty.append(mark, heading, note);
+  cardsEl.replaceChildren(empty);
+}
+
+async function load() {
+  cardsEl.replaceChildren(...[0, 1, 2].map(() => {
+    const s = document.createElement("div"); s.className = "skeleton"; return s;
+  }));
+  showQueue();
+
+  try {
+    const [me, queue, taxonomy, scope] = await Promise.all([
+      api("/api/whoami"), api("/api/queue"), api("/api/taxonomy"), api("/api/scope"),
+    ]);
+
+    reviewer = me.reviewer;
+    el("whoName").textContent = reviewer;
+    el("avatar").textContent = reviewer.trim().charAt(0) || "?";
+    el("who").hidden = false;
+    el("who").title = `Approvals are recorded as ${reviewer}`;
+
+    types = taxonomy.types;
+    el("scope").textContent = scopeText(scope);
+
+    cardsEl.replaceChildren();
+    if (!queue.count) {
+      renderEmpty();
+      el("policy").hidden = true;
+    } else {
+      const reasons = new Set(queue.candidates.map((c) => c.reason));
+      const shared = reasons.size === 1 ? [...reasons][0] : null;
+      el("policy").textContent = shared || "";
+      el("policy").hidden = !shared;
+      queue.candidates.forEach((candidate) => cardsEl.append(card(candidate, shared)));
+    }
+    retitle();
+  } catch (error) {
+    cardsEl.replaceChildren();
+    if (token()) say(error.message);
+  }
+}
+
+// --- keyboard ---------------------------------------------------------------
+
+document.addEventListener("keydown", (event) => {
+  if (queueEl.hidden || event.metaKey || event.ctrlKey || event.altKey) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName)) return;
+
+  const first = cardsEl.querySelector(".card:not(.busy):not(.leaving)");
+  if (!first || !first._keys) return;
+  const button = first._keys[event.key.toLowerCase()];
+  if (button) { event.preventDefault(); button.click(); }
+});
+
+// --- gate -------------------------------------------------------------------
+
+function showGate() {
+  gate.hidden = false; queueEl.hidden = true;
+  el("signout").hidden = true; el("refresh").hidden = true; el("who").hidden = true;
+  el("token").focus();
+}
+
+function showQueue() {
+  gate.hidden = true; queueEl.hidden = false;
+  el("signout").hidden = false; el("refresh").hidden = false;
+}
+
+el("unlock").onclick = () => {
+  const supplied = el("token").value.trim();
+  if (!supplied) return;
+  sessionStorage.setItem(KEY_TOKEN, supplied);
+  el("token").value = "";
+  banner.hidden = true;
+  load();
+};
+el("token").addEventListener("keydown", (e) => { if (e.key === "Enter") el("unlock").click(); });
+el("refresh").onclick = load;
+el("signout").onclick = () => { sessionStorage.removeItem(KEY_TOKEN); decided = 0; showGate(); };
+
+if (token()) load(); else showGate();
+</script>
+</body>
+</html>

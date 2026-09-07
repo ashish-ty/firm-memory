@@ -20,6 +20,8 @@ dependencies = [
     "psycopg[binary,pool]>=3.1",   # the pgvector store
     "litellm>=1.99",               # one gateway key for any LLM (OpenRouter, proxies)
     "fastembed>=0.8",              # local ONNX embeddings; no torch, no egress
+    "fastapi>=0.110",              # the review API
+    "uvicorn>=0.27",               # and the server that runs it
 ]
 
 [project.optional-dependencies]
@@ -37,13 +39,20 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=4.1",
     "ruff>=0.6",
+    "httpx>=0.27",                 # fastapi's TestClient transport
 ]
 
 [project.scripts]
 firm-memory-mcp = "firm_memory.mcp.server:main"
+firm-memory-review = "firm_memory.review.server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/firm_memory"]
+
+[tool.hatch.build.targets.wheel.force-include]
+# The review UI is a single static page served by the API. It has to travel
+# with the wheel, or an installed firm-memory-review serves a 404.
+"src/firm_memory/review/static" = "firm_memory/review/static"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -50,5 +50,15 @@ class ProviderError(FirmMemoryError):
     """The underlying memory provider failed. Wraps the original exception as ``__cause__``."""
 
 
+class CandidateStoreError(FirmMemoryError):
+    """The queue of candidates awaiting review is unreachable.
+
+    Distinct from :class:`ProviderError` because it is not the memory pool that
+    failed. It is also *not* absorbed: an empty queue and an unreachable queue
+    look identical to a reviewer, and quietly showing "nothing to review" for a
+    queue that is actually full is the worst outcome the review UI has.
+    """
+
+
 class UnknownProviderError(ConfigurationError):
     """Configuration named a provider that is not registered."""

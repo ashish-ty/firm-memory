@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from .config import Settings
 from .errors import (
+    CandidateStoreError,
     ConfigurationError,
     ExtractionError,
     FirmMemoryError,
@@ -40,12 +41,14 @@ from .errors import (
     UnknownProviderError,
 )
 from .ingestion import (
+    Amendment,
     ApprovalQueue,
     Candidate,
     CandidateStore,
     CompletionClient,
     FactExtractor,
     LLMFactExtractor,
+    PostgresCandidateStore,
     SourceDocument,
 )
 from .lifecycle import ApprovalDecision, ApprovalPolicy, evaluate, requires_human_approval
@@ -70,11 +73,13 @@ __all__ = [
     "CODING_CATEGORIES",
     "DEFAULT_SEARCH_STATUSES",
     "DEFAULT_SEARCH_TIERS",
+    "Amendment",
     "ApprovalDecision",
     "ApprovalPolicy",
     "ApprovalQueue",
     "Candidate",
     "CandidateStore",
+    "CandidateStoreError",
     "Category",
     "CompletionClient",
     "ConfigurationError",
@@ -93,6 +98,7 @@ __all__ = [
     "MemoryType",
     "Metrics",
     "MigratableProvider",
+    "PostgresCandidateStore",
     "Proposal",
     "Provenance",
     "ProviderError",

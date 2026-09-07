@@ -3,7 +3,7 @@
 import pytest
 
 from firm_memory import FirmMemory, MemoryScope, MemoryType, Settings
-from firm_memory.errors import LifecycleError
+from firm_memory.errors import LifecycleError, ProviderError
 from firm_memory.ingestion import JsonFileCandidateStore
 from firm_memory.providers.inmemory import InMemoryProvider
 
@@ -116,3 +116,60 @@ def test_automation_can_activate_a_confident_non_critical_memory(provider):
         )
         assert proposal.accepted is True
         assert memory.search("what does the build use")
+
+
+# --- the reviewer's endorsement must not evaporate ----------------------------
+
+
+def test_a_failed_write_puts_the_candidate_back_rather_than_losing_it():
+    """Claiming removes it from the queue; a failed commit must undo that."""
+
+    class FailingProvider(InMemoryProvider):
+        def insert(self, memory):
+            raise ProviderError("pgvector is down")
+
+    api = FirmMemory(FailingProvider(), settings=Settings(min_score=0.0), scope=MemoryScope.for_repo("oms"))
+    proposal = api.propose(RULE, type=MemoryType.BUSINESS_RULE)
+
+    with pytest.raises(ProviderError):
+        api.approvals.approve(proposal.candidate_id, approver="ashish")
+
+    assert [candidate.id for candidate in api.approvals.pending()] == [proposal.candidate_id]
+    api.close()
+
+
+def test_a_restored_candidate_is_the_one_proposed_not_the_one_amended():
+    """The reviewer's edit was never committed either; it must not linger."""
+    from firm_memory.ingestion import Amendment
+
+    class FailingProvider(InMemoryProvider):
+        def insert(self, memory):
+            raise ProviderError("pgvector is down")
+
+    api = FirmMemory(FailingProvider(), settings=Settings(min_score=0.0), scope=MemoryScope.for_repo("oms"))
+    proposal = api.propose(RULE, type=MemoryType.BUSINESS_RULE)
+
+    with pytest.raises(ProviderError):
+        api.approvals.approve(
+            proposal.candidate_id, approver="ashish", amendment=Amendment(content="A rewritten rule.")
+        )
+
+    [restored] = api.approvals.pending()
+    assert restored.memory.content == RULE
+    api.close()
+
+
+def test_an_amendment_the_taxonomy_refuses_does_not_destroy_the_candidate(memory):
+    """A reviewer's mistyped edit must not lose the fact it was meant to improve."""
+    from firm_memory.errors import TaxonomyError
+    from firm_memory.ingestion import Amendment
+
+    proposal = memory.propose(RULE, type=MemoryType.BUSINESS_RULE)
+
+    with pytest.raises(TaxonomyError):
+        memory.approvals.approve(
+            proposal.candidate_id, approver="ashish", amendment=Amendment(type="user_preferences")
+        )
+
+    [restored] = memory.approvals.pending()
+    assert restored.memory.content == RULE

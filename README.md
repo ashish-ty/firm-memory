@@ -15,38 +15,58 @@ and the current code disagree, the code wins.**
 ## The shape of it
 
 ```text
-  OpenCode        On-call        Future agent
-      └───────────────┼───────────────┘
-                      │  MCP
-             ┌────────▼─────────┐
-             │  Firm Memory MCP │   thin transport adapter
-             └────────┬─────────┘
-                      │
-             ┌────────▼─────────┐
-             │   Firm Memory    │   taxonomy · scope · provenance · lifecycle
-             └────────┬─────────┘
-                      │  MemoryProvider
-             ┌────────▼─────────┐
-             │      mem0        │   embeddings · vector search · ranking
-             └──────────────────┘
+  OpenCode        On-call        Future agent                 An engineer
+      └───────────────┼───────────────┘                            │
+                      │  MCP                                       │  browser
+             ┌────────▼─────────┐                        ┌─────────▼────────┐
+             │  Firm Memory MCP │  transport adapter     │   Review UI      │
+             └────────┬─────────┘                        └─────────┬────────┘
+                      │                                            │
+                      │   search · get                             │
+                      │   ingest · propose ──► candidate queue ──►  │  approve
+                      │   correct                (shared)          │  amend
+                      │                                            │  reject
+             ┌────────▼────────────────────────────────────────────▼────────┐
+             │   Firm Memory      taxonomy · scope · provenance · lifecycle  │
+             └────────────────────────────┬─────────────────────────────────┘
+                                          │  MemoryProvider
+                              ┌───────────▼────────────┐
+                              │         mem0           │  embeddings · search
+                              └────────────────────────┘
 ```
 
+Agents propose; they never write. Everything they put forward waits in the
+candidate queue until a person opens the review UI and endorses it — that gate
+is the only path into the retrievable pool.
+
 The platform owns **what a firm memory means**. The provider owns **how it is
-stored and retrieved**. MCP owns **how agents access it**. That separation is
-the whole point: a second provider can be introduced without changing OpenCode
-or the MCP contract.
+stored and retrieved**. MCP owns **how agents access it**, and the review UI
+owns **how a human decides**. That separation is the whole point: a second
+provider can be introduced without changing OpenCode or the MCP contract.
 
 ---
 
 ## Quick start
 
 ```bash
-pip install -e '.[mem0,pgvector,rerank,mcp,extract,dev]'
-export FIRM_MEM0_PG_DSN='postgresql://mem0:pw@db.internal:5432/mem0'
-export FIRM_MEMORY_DOMAINS='execution,mcx'      # this repo's domains
-export FIRM_MEMORY_CANDIDATES_PATH='.firm-memory/candidates.json'
-export FIRM_MEMORY_EXTRACTION_MODEL='litellm_proxy/gpt-4o-mini'   # enables ingest()
+uv sync                       # installs everything, including the dev group
+cp .env.example .env          # then fill in the two credentials
 ```
+
+```ini
+# .env  (gitignored)
+OPENROUTER_API_KEY=sk-or-...
+FIRM_MEM0_PG_DSN=postgresql://mem0:pw@localhost:5432/mem0
+```
+
+A database with pgvector, if you do not already have one:
+
+```bash
+docker compose -f examples/docker-compose.yml up -d
+```
+
+mem0 creates the `vector` extension and its table on first use, so there is no
+schema step.
 
 ```python
 from firm_memory import FirmMemory, MemoryScope, MemoryType
@@ -71,7 +91,14 @@ memory.approvals.approve(proposal.candidate_id, approver="ashish")
 Run the MCP server for agents:
 
 ```bash
-firm-memory-mcp        # stdio; exposes memory_search / memory_get / memory_propose / memory_correct
+firm-memory-mcp        # stdio; five tools, listed under "The agent surface" below
+```
+
+Run the review UI for the humans who approve what those agents propose:
+
+```bash
+export FIRM_MEMORY_REVIEW_TOKEN=$(openssl rand -hex 32)
+firm-memory-review     # http://127.0.0.1:8765
 ```
 
 ### Ingesting raw material
@@ -199,41 +226,113 @@ an engineer just approved would be worse than an error.
 
 ---
 
-## Configuration
+## The agent surface
 
-Platform settings are provider-independent; provider settings are read by the
-provider itself. That split is what keeps a provider swap a config change.
+Five MCP tools. None of them writes to the pool.
 
-| Variable | Default | Meaning |
+| Tool | What it does |
+| --- | --- |
+| `memory_search` | Find knowledge relevant to the task in hand. |
+| `memory_get` | Fetch one memory by id, to cite it or verify a claim. |
+| `memory_ingest` | Hand over **raw material** — an MR discussion, an incident write-up, an interview — to be distilled into candidates. |
+| `memory_propose` | Put forward **one already-distilled fact**. |
+| `memory_correct` | Report a memory as stale or wrong. It is demoted and flagged, never deleted. |
+
+`memory_ingest` and `memory_propose` are the same gate reached from two
+distances. An agent that has *read* a discussion should hand over the discussion
+and let the platform's extractor and taxonomy do the judging; an agent that has
+already concluded something specific proposes that. Neither stores anything: the
+raw text is never kept, only the facts extracted from it, and each of those waits
+for a person.
+
+Extracting nothing is a normal outcome, and the tool description says so — an
+agent that reads `count: 0` as a failure will retry and just burn tokens.
+
+---
+
+## Reviewing what agents propose
+
+The gate is only real if someone can see the queue. `firm-memory-review` serves
+one page that lists every candidate with its type, scope, confidence and the
+provenance needed to check it, and lets a reviewer **approve, reject, or correct
+it first**.
+
+```bash
+export FIRM_MEMORY_REVIEW_TOKEN=$(openssl rand -hex 32)
+export FIRM_MEMORY_REVIEW_APPROVER=ashish
+export FIRM_MEMORY_CANDIDATES_URL=postgresql://mem0:pw@localhost:5432/mem0
+firm-memory-review
+```
+
+Keep the token constant — in `.env` rather than generated per run — so it is
+pasted once. For a team, issue one each and skip the two variables above:
+
+```bash
+export FIRM_MEMORY_REVIEW_TOKENS="ashish:$(openssl rand -hex 32),priya:$(openssl rand -hex 32)"
+```
+
+For the whole loop on a fresh machine — agent ingests over MCP, human approves
+here — follow [`examples/MCP_ROUND_TRIP.md`](examples/MCP_ROUND_TRIP.md).
+
+An extracted fact is frequently 90% right — the rule is real but the wording is
+the model's, the type is one category off, or the scope is narrower than the fact
+actually is. So a reviewer may amend **content, type, scope and confidence** on
+the way through, and the amended memory records who changed it and which fields
+moved. `tier` and `task` are deliberately not amendable: they describe how a
+memory was written, not what a reviewer thinks of it.
+
+Four behaviours are worth knowing about, because each one is a place where a
+comfortable lie would leave firm knowledge in a state nobody intended:
+
+- **An unreachable queue is not an empty queue.** It returns 503 and says so.
+  Showing "nothing to review" for a queue that is actually full is this tool's
+  worst possible failure.
+- **Approval claims the candidate atomically** (`DELETE ... RETURNING`). Two
+  reviewers on one candidate is a race exactly one wins; the other gets a 409
+  telling them to reload.
+- **Any failure after that claim puts the candidate back** — a provider outage
+  and a mistyped amendment alike. A reviewer's edit must not be able to destroy
+  the candidate it was meant to improve.
+- **Every decision is attributed, by the token.** There is no name field. A
+  token is issued to a person, so presenting it both admits you and says who is
+  approving — a name in the request body is refused outright. That is stronger
+  than a typed name, which is a claim rather than a fact, and it is attribution
+  rather than authorisation: every reviewer can do the same things, and a memory
+  is owned by the repo and the firm, never by a person.
+
+The page loads nothing from the internet — no CDN, no web font, no analytics.
+Candidates are unreviewed statements about the firm's trading systems, and a
+review tool that reached out to third parties while displaying them would undo
+the self-hosted, no-egress deployment. There is a test on it.
+
+The token is held in the tab's `sessionStorage` and never in a URL. The service
+refuses to start without one, refuses to start a token with no reviewer name
+attached, refuses two reviewers sharing a token — that would make an approval
+untraceable to either — binds to `127.0.0.1` unless told otherwise, and warns
+when it is bound anywhere wider.
+
+### Where the queue lives
+
+A candidate is proposed by a bot in a CI job that ends minutes later, and
+approved by an engineer somewhere else hours after that. A queue that cannot
+span those two processes is a queue nothing ever gets reviewed from — so the
+location is configured as a URL whose scheme picks the store:
+
+| `FIRM_MEMORY_CANDIDATES_URL` | Store | Reaches |
 | --- | --- | --- |
-| `FIRM_MEMORY_PROVIDER` | `mem0` | Which provider to use |
-| `FIRM_MEMORY_LIMIT` | `5` | Results per search |
-| `FIRM_MEMORY_MIN_SCORE` | `0.3` | Relevance floor |
-| `FIRM_MEMORY_TIMEOUT_SECONDS` | `2.0` | Bounded wait before giving up |
-| `FIRM_MEMORY_DOMAINS` | — | Domains this checkout belongs to |
-| `FIRM_MEMORY_REPO` | *(git remote)* | Override the repo slug |
-| `FIRM_MEMORY_CANDIDATES_PATH` | *(in-process)* | Where proposals wait for a human |
-| `FIRM_MEMORY_AUTO_APPROVE` | `off` | Confidence-based automation |
-| `FIRM_MEMORY_EXTRACTOR` | `provider` | `provider` (mem0's extractor), `llm`, or `none` |
-| `FIRM_MEMORY_EXTRACTION_MODEL` | — | Model for the `llm` extractor |
-| `FIRM_MEMORY_EXTRACTION_API_KEY` | — | Gateway key for extraction |
-| `FIRM_MEMORY_EXTRACTION_API_BASE` | — | Gateway URL for extraction |
-| `FIRM_MEM0_PG_DSN` | **required** | pgvector connection string |
-| `FIRM_MEM0_COLLECTION` | `mem0_firm` | Collection name |
-| `FIRM_MEM0_POOL_OWNER` | `firm` | `user_id` naming the pool |
-| `FIRM_MEM0_RERANK` | `on` | Local cross-encoder reranking |
-| `FIRM_MEM0_LLM_PROVIDER` | `openai` | `litellm` fronts every provider with one key |
-| `FIRM_MEM0_API_KEY` / `_BASE_URL` | — | Gateway for the embedder (OpenAI-compatible) |
-| `FIRM_MEM0_HNSW` / `_DISKANN` | `on` / `off` | pgvector index |
+| `postgresql://…` | Postgres table, separate from the memory pool | Any machine |
+| `file:///srv/queue.json` | One JSON file, written atomically | One host |
+| `memory://` *(default)* | A dict | One process |
 
-`FIRM_MEM0_REPO`, `FIRM_MEM0_TOP_K`, `FIRM_MEM0_THRESHOLD` and
-`FIRM_MEM0_FIRM_OWNER` are still honoured so an existing deployment does not
-change behaviour on upgrade.
+Unset with no `FIRM_MEMORY_CANDIDATES_PATH` means in-process, which is right for
+tests and wrong for a deployment. An unrecognised scheme is refused rather than
+quietly downgraded: a misconfigured queue that silently became a dict would
+accept everything the bot proposed and lose all of it, with no error anywhere.
 
-The deployment is self-hosted with no egress. Business rules like *"MCX orders
-always route through Risk Engine A"* are closer to strategy IP than to code
-comments, and the pool inherits the union of access control across every repo
-feeding it.
+The table is created on first use, so there is no migration step — and it is
+deliberately **not** part of the memory pool. An unreviewed candidate is not firm
+knowledge, and putting it in the retrievable pool would leave every recall one
+status-filter bug away from returning things nobody approved.
 
 ---
 
@@ -255,14 +354,31 @@ src/firm_memory/
 │   ├── registry.py    configuration-driven selection
 │   ├── inmemory.py    dependency-free provider for tests and local use
 │   └── mem0/          namespace · filters · mapping · settings · provider
+│                      · extraction (mem0's extractor, read-only)
+│                      · embedders (fastembed correction)
 ├── ingestion/
 │   ├── extraction.py  raw material -> candidates (the only way in)
 │   ├── llm.py         the completion client (LiteLLM by default)
 │   ├── approval.py    the human gate
-│   └── store.py       where candidates wait
-└── mcp/
-    ├── tools.py       the four tools (no SDK dependency)
-    └── server.py      thin transport adapter
+│   ├── amendment.py   what a reviewer may correct on the way through
+│   ├── store.py       where candidates wait (dict, file)
+│   ├── postgres_store.py  ...and across machines
+│   └── selection.py   which of those a queue URL names
+├── mcp/
+│   ├── tools.py       the five tools (no SDK dependency)
+│   └── server.py      thin transport adapter
+└── review/
+    ├── service.py     the review operations, framework free
+    ├── app.py         the HTTP surface and its status codes
+    ├── settings.py    token, bind address, rate limit
+    ├── auth.py        access (a token) vs attribution (a typed name)
+    ├── throttle.py    a per-client bound
+    └── static/        one self-contained page; no CDN, no web font
+
+examples/
+├── review_comment.py   one review comment, end to end
+├── PIPELINE.md         how it works, with diagrams
+└── docker-compose.yml  Postgres with pgvector
 
 tests/
 ├── unit/          modules in isolation
@@ -276,10 +392,22 @@ tests/
 ## Development
 
 ```bash
-.venv/bin/python -m pytest -q                       # 261 tests (1 skipped without the mcp extra)
-.venv/bin/python -m pytest --cov --cov-report=term   # 94% coverage
-.venv/bin/python -m ruff check src tests
+uv run pytest -q                          # 438 tests (1 skipped without the mcp extra)
+uv run pytest --cov --cov-report=term     # 94% coverage
+uv run ruff check src tests examples
 ```
+
+CI runs the same three on Python 3.11 and 3.12.
+
+The Postgres candidate queue is held to the same suite as the other two stores,
+but only when a database is reachable:
+
+```bash
+docker compose -f examples/docker-compose.yml up -d
+FIRM_MEMORY_TEST_PG_DSN=postgresql://mem0:pw@localhost:5432/mem0 uv run pytest -q
+```
+
+Without it those cases skip rather than fail, so a clone still runs green.
 
 The **contract tests** are the ones to watch. They run our filters through
 mem0's real preprocessing and pgvector's SQL builder, pinning constraints found

@@ -61,6 +61,12 @@ class Settings:
     #: be a path: the agent that proposes and the engineer who approves are
     #: different processes, hours apart.
     candidates_path: str | None = None
+    #: Where the queue lives, as a URL whose scheme picks the store. Set this
+    #: when the two processes are on *different machines*, which is the real
+    #: deployment: the bot proposes from a CI job that ends minutes later, and
+    #: the engineer approves elsewhere hours after. Takes precedence over
+    #: ``candidates_path``, which it generalises.
+    candidates_url: str | None = None
     #: Which extractor distils raw material into candidates. ``"provider"``
     #: reuses the memory provider's own extractor — for mem0 that means its
     #: dedup-aware extraction, minus its write. ``"llm"`` uses the platform's
@@ -96,6 +102,7 @@ class Settings:
             ),
             default_domains=_slug_list(env.get("FIRM_MEMORY_DOMAINS")),
             candidates_path=(env.get("FIRM_MEMORY_CANDIDATES_PATH") or "").strip() or None,
+            candidates_url=(env.get("FIRM_MEMORY_CANDIDATES_URL") or "").strip() or None,
             extractor=(env.get("FIRM_MEMORY_EXTRACTOR") or DEFAULT_EXTRACTOR).strip().lower(),
             extraction_model=(env.get("FIRM_MEMORY_EXTRACTION_MODEL") or "").strip() or None,
             extraction_api_key=(env.get("FIRM_MEMORY_EXTRACTION_API_KEY") or "").strip() or None,
